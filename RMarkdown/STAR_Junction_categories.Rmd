@@ -247,7 +247,8 @@ annot_junc_prop_df <- annot_junc_df %>%
   dplyr::left_join(colData(rse_jx) %>% 
                      tibble::as_tibble(rownames = "sample_id") %>%
                      dplyr::select(sample_id, Type, Diagnosis, AtaxiaSubtype, Region),
-                   by = "sample_id")
+                   by = "sample_id") %>%
+  dplyr::mutate(Type = factor(Type, levels = c("Control", "Case")))
 ```
 
 ## Proportion of junctions by category {.tabset}
@@ -267,8 +268,6 @@ First, we plot the category percentages by sample. We employ the function `plotJ
 #'
 #' @return
 #' @export
-#'
-#' @examples
 plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
   p <- ggplot(annot_junc_prop_df,
               aes(x = type, y = prop_junc, fill = !!sym(level))) +
@@ -292,9 +291,7 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
 ### Level 1 (Type) {-}
 
 ```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of junctions by disease status and brain tissue."}
-plotJunctionCategories(annot_junc_prop_df %>% 
-                         dplyr::mutate(Type = factor(Type, levels = c("Control", "Case"))), 
-                       level = "Type", split_tissue = T)
+plotJunctionCategories(annot_junc_prop_df, level = "Type", split_tissue = T)
 ```
 
 ### Level 2 (AtaxiaSubtype) {-}
@@ -313,7 +310,7 @@ plotJunctionCategories(annot_junc_prop_df %>%
 
 ## Proportion of counts by category {.tabset}
 
-Next, we also represent the proportion of counts (or reads) that correspond to each category when compared against the total number of reads, obtained from the MultiQC report file in `/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/metadata/multiqc_rseqc_read_distribution.txt`. We use the function `plotJunctionCountCategories`.
+Next, we also represent the proportion of counts (or reads) that correspond to each category when compared against the total number of junction reads. We use the function `plotJunctionCountCategories`.
 
 ```{r, echo = T}
 #' Plots the proportion of counts for each category and sample
@@ -326,7 +323,7 @@ Next, we also represent the proportion of counts (or reads) that correspond to e
 #'   and "Diagnosis" are valid inputs.
 #' @param tissue character vector, tissue to use to graph. Leave as NULL if no
 #'   distinction is used.
-#' @param ref_group chahracter vector, category in the \code{level} field that
+#' @param ref_group character vector, category in the \code{level} field that
 #'   will be compare against for the Wilcoxon signed-rank test.
 #'
 #' @return
@@ -361,17 +358,13 @@ plotJunctionCountCategories <- function(annot_junc_prop_df, level, tissue = NULL
 #### Cerebellum {-}
 
 ```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
-plotJunctionCountCategories(annot_junc_prop_df %>% 
-                              dplyr::mutate(Type = factor(Type, levels = c("Control", "Case"))), 
-                            level = "Type", tissue = "Cerebellum")
+plotJunctionCountCategories(annot_junc_prop_df, level = "Type", tissue = "Cerebellum")
 ```
 
 #### Frontal {-}
 
 ```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
-plotJunctionCountCategories(annot_junc_prop_df %>% 
-                              dplyr::mutate(Type = factor(Type, levels = c("Control", "Case"))), 
-                            level = "Type", tissue = "Frontal")
+plotJunctionCountCategories(annot_junc_prop_df, level = "Type", tissue = "Frontal")
 ```
 
 ### Level 2 (AtaxiaSubtype) {.tabset -}
@@ -454,9 +447,7 @@ annot_junc_prop_red_df <- annot_junc_red_df %>%
 ### Level 1 (Type) {-}
 
 ```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of junctions by disease status and brain tissue."}
-plotJunctionCategories(annot_junc_prop_df %>% 
-                         dplyr::mutate(Type = factor(Type, levels = c("Control", "Case"))), 
-                       level = "Type", split_tissue = T)
+plotJunctionCategories(annot_junc_prop_df, level = "Type", split_tissue = T)
 ```
 
 ### Level 2 (AtaxiaSubtype) {-}
@@ -480,17 +471,13 @@ plotJunctionCategories(annot_junc_prop_red_df %>%
 #### Cerebellum {-}
 
 ```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
-plotJunctionCountCategories(annot_junc_prop_red_df %>% 
-                              dplyr::mutate(Type = factor(Type, levels = c("Control", "Case"))), 
-                            level = "Type", tissue = "Cerebellum")
+plotJunctionCountCategories(annot_junc_prop_red_df, level = "Type", tissue = "Cerebellum")
 ```
 
 #### Frontal {-}
 
 ```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
-plotJunctionCountCategories(annot_junc_prop_red_df %>% 
-                              dplyr::mutate(Type = factor(Type, levels = c("Control", "Case"))), 
-                            level = "Type", tissue = "Frontal")
+plotJunctionCountCategories(annot_junc_prop_red_df, level = "Type", tissue = "Frontal")
 ```
 
 ### Level 2 (AtaxiaSubtype) {.tabset -}

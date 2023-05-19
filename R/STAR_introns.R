@@ -236,7 +236,7 @@ removeAmbiguousGenesRSE <- function(rse_jx) {
 #' Plots the category percentages by sample
 #'
 #' @param annot_junc_prop_df dataframe, contains the proportion of junctions for
-#'   each category and sample.
+#'   each category and each sample.
 #' @param level character vector, specifies the level of study. In this
 #'   function, is the name of the column that will split the graph and the
 #'   Wilcoxon tests. For the Ataxia RNAseq data, only "Region", "AtaxiaSubtype"
@@ -245,21 +245,17 @@ removeAmbiguousGenesRSE <- function(rse_jx) {
 #'
 #' @return
 #' @export
-plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
+plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, ref_group = NULL){
   p <- ggplot(annot_junc_prop_df,
               aes(x = type, y = prop_junc, fill = !!sym(level))) +
     geom_boxplot() +
-    scale_y_continuous(expand = expansion(mult = c(0.01, 0)), limits = c(0, 1)) +
+    scale_y_continuous(expand = expansion(mult = c(0.0, 0.15)), limits = c(0, NA), breaks = seq(0, 1, 0.2)) +
     labs(x = "", y = "Proportion of junctions") +
-    scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
-    ggpubr::geom_pwc(aes(group = !!sym(level)), label = " p = {p.adj.format}", p.adjust.method = "bonferroni", 
-                     p.adjust.by = "group", vjust = -0.5, hide.ns = T) +
+    scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9, 2, 7)]) + 
+    ggpubr::geom_pwc(aes(group = !!sym(level)), ref.group = ref_group, vjust = -0.5, hide.ns = T,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
     custom_gg_theme
-  if(split_tissue){
-    p <- p + 
-      facet_wrap(vars(Region), ncol = 1) + 
-      scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9, 2, 7)])
-  }
+  if(split_tissue) p <- p + facet_wrap(vars(Region), ncol = 1)
   
   return(p)
 }
@@ -274,7 +270,7 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
 #'   and "Diagnosis" are valid inputs.
 #' @param tissue character vector, tissue to use to graph. Leave as NULL if no
 #'   distinction is used.
-#' @param ref_group chahracter vector, category in the \code{level} field that
+#' @param ref_group character vector, category in the \code{level} field that
 #'   will be compare against for the Wilcoxon signed-rank test.
 #'
 #' @return
