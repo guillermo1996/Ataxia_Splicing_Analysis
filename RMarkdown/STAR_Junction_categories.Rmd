@@ -34,11 +34,12 @@ shhh(library(doParallel))
 
 ## Load helper functions
 source(here::here("R/STAR_introns.R"))
+source(here::here("R/hf_graph_and_themes.R"))
 
 ## Set options
 options(dplyr.summarise.inform = FALSE)
 options(lifecycle_verbosity = "warning")
-knitr::opts_chunk$set(echo = F, warning = F, message = F, out.width="100%", fig.align = "center", dpi = 300)
+knitr::opts_chunk$set(echo = F, warning = F, message = F, out.width="100%", fig.align = "center", dpi = 200)
 ```
 
 ```{r load-theme, echo = F, results = "asis"}
@@ -88,39 +89,6 @@ body{
     font-size: 12px;
 }
 </style>')
-
-## ggplot themes
-custom_gg_theme <- theme(
-  plot.title = element_text(size = 11, face = "bold"),
-  panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = 1),
-  axis.text.x = ggplot2::element_text(color = "black", size = 8, angle = 0, hjust = 0.5),
-  axis.text.y = ggplot2::element_text(color = "black", size = 8),
-  axis.title.x = ggplot2::element_text(face = "bold", size = 11, margin = margin(5, 0, 0, 0)),
-  axis.title.y = ggplot2::element_text(face = "bold", size = 11, margin = margin(0, 10, 0, 0)),
-  panel.grid.minor = element_line(color = "#444444", linewidth = 0.05, linetype = 2),
-  panel.grid.major.y = element_line(color = "#444444", linewidth = 0.05, linetype = 2),
-  panel.grid.major.x = element_line(color = "#444444", linewidth = 0.1),
-  panel.background = element_rect(fill = "#FBFBFB"),
-  legend.title = element_text(size = 12),
-  legend.text = element_text(size = 10),
-  legend.position = "top",
-  legend.key = element_rect(color = "black"),
-  legend.key.size = unit(1, "lines"),
-  strip.text.x = element_text(color = "black", face = "bold", size = 9),
-  strip.background = element_rect(color = "black", linewidth = 1, linetype = "solid"),
-  strip.text.y = element_text(color = "black", face = "bold", size = 9),
-  plot.margin = margin(0.5, 0.5, 0.2, 0.5, "cm")
-)
-
-custom_gg_theme_subtitle <- custom_gg_theme +
-  theme(
-    plot.subtitle = element_text(size = 12, vjust = 1, color = "black", margin = margin(b = -20, t = -5)),
-    plot.title = element_text(size = 15, face = "bold"),
-    legend.margin = margin(b = -5),
-    legend.justification = "right",
-    legend.title = element_text(size = 11),
-    legend.text = element_text(size = 10)
-  )
 ```
 
 # Background
@@ -128,7 +96,7 @@ custom_gg_theme_subtitle <- custom_gg_theme +
 
 This report is meant to be used as a template. As such, the different sections will include instructions on how to modify the graphic outputs and not descriptions about the results themselves.
 
-Three different studies will be presented: brain region (Level 1), subtypes (Level 2) and diagnoses (Level 3). Types 2 and 3 will be further split by brain tissue. To run this script, it is necessary to source the file at `/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/R/STAR_introns.R` with needed helper functions.
+Three different studies will be presented: disease status (Level 1), ataxia subtypes (Level 2) and diagnoses (Level 3). To run this script, it is necessary to source the file at `/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/R/STAR_introns.R` with needed helper functions.
 
 ```{r, echo = T}
 # Paths
@@ -153,7 +121,7 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 
 ## Load the SJ files
 
-The first step is to load the junctions from the STAR alignment output files (`SJ.tab.out`). We employ the `loadSJ` function, an adaptation of the `load_sj_df` function by Regina. [Source](https://github.com/RHReynolds/LBD-seq-bulk-analyses/blob/main/R/load_sj_df.R).
+The first step is to load the junctions from the STAR alignment output files (`SJ.tab.out`). We employ the [`loadSJ`](https://github.com/guillermo1996/Ataxia_Splicing_Analysis/blob/main/R/STAR_introns.R#L35) function, an adaptation of the `load_sj_df` function by Regina. [Source](https://github.com/RHReynolds/LBD-seq-bulk-analyses/blob/main/R/load_sj_df.R).
 
 ```{r, echo = T}
 sj_df <- loadSJ(metadata, sj_tab_path)
@@ -172,7 +140,7 @@ sj_df %>%
 
 ## Create the RSE_jx object
 
-Next, we create the RSE object with the annotated junctions, the reads matrix and the sample metadata. We employ the function `createRSE`, upgraded and adapted from the function `create_rse_jx` by Regina. [Source](https://github.com/RHReynolds/LBD-seq-bulk-analyses/blob/main/R/create_rse_jx.R).
+Next, we create the RSE object with the annotated junctions, the reads matrix and the sample metadata. We employ the function [`createRSE`](https://github.com/guillermo1996/Ataxia_Splicing_Analysis/blob/main/R/STAR_introns.R#L90), upgraded and adapted from the function `create_rse_jx` by Regina. [Source](https://github.com/RHReynolds/LBD-seq-bulk-analyses/blob/main/R/create_rse_jx.R).
 
 The main difference is that only junctions from chromosomes 1:22, X and Y are considered (can be modified in the function with the variable `valid_seqnames`).
 
@@ -215,6 +183,7 @@ Across all visualizations, a Wilcoxon signed-rank test between the distributions
 category_names <- c("annotated" = "Annotated",
                     "novel_acceptor" = "Novel Acceptor",  
                     "novel_donor" = "Novel Donor", 
+                    "diff_acceptor_donor" = "Diff. Acceptor/Donor",
                     "novel_exon_skip" = "Novel Exon Skip", 
                     "novel_combo" = "Novel Combo", 
                     "ambig_gene" = "Ambig. genes", 
@@ -244,6 +213,13 @@ annot_junc_prop_df <- annot_junc_df %>%
                 prop_count = count/total_count,
                 prop_total_reads = count/total_reads) %>%
   dplyr::select(-total_reads) %>%
+  dplyr::ungroup() %>%
+  # tidyr::pivot_longer(names_to = "metric", values_to = "value", cols = -c(type, sample_id)) %>%
+  # tidyr::pivot_wider(names_from = "type", values_from = "value") %>%
+  # dplyr::mutate(`Diff. Acceptor/Donor` = `Novel Acceptor` - `Novel Donor`) %>%
+  # tidyr::pivot_longer(names_to = "type", values_to = "value", -c(sample_id, metric)) %>%
+  # tidyr::pivot_wider(names_from = "metric", values_from = "value") %>%
+  # dplyr::mutate(type = factor(type, levels = category_names)) %>%
   dplyr::left_join(colData(rse_jx) %>% 
                      tibble::as_tibble(rownames = "sample_id") %>%
                      dplyr::select(sample_id, Type, Diagnosis, AtaxiaSubtype, Region),
@@ -253,17 +229,16 @@ annot_junc_prop_df <- annot_junc_df %>%
 
 ## Proportion of junctions by category {.tabset}
 
-First, we plot the category percentages by sample. We employ the function `plotJunctionCategories`, which allows to select a different level to group by (three different possibilities: `Region`, `AtaxiaSubtype` and `Diagnosis`). [Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/STAR_intron_annotation.html#4_Proportion_annotatedpartially_annotatedunannotated_per_group).
+First, we plot the category percentages by sample. We employ the function `plotJunctionCategories`, which allows to select a different level to group by (three different possibilities: `Type`, `AtaxiaSubtype` and `Diagnosis`). [Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/STAR_intron_annotation.html#4_Proportion_annotatedpartially_annotatedunannotated_per_group).
 
 ```{r, echo = T}
 #' Plots the category percentages by sample
 #'
 #' @param annot_junc_prop_df dataframe, contains the proportion of junctions for
 #'   each category and each sample.
-#' @param level character vector, specifies the level of study. In this
-#'   function, is the name of the column that will split the graph and the
-#'   Wilcoxon tests. For the Ataxia RNAseq data, only "Region", "AtaxiaSubtype"
-#'   and "Diagnosis" are valid inputs.
+#' @param level character vector, specifies the level of study. Name of the
+#'   column that will split the graph and the Wilcoxon tests. For the Ataxia
+#'   RNAseq data, only "Type", "AtaxiaSubtype" and "Diagnosis" are valid inputs.
 #' @param split_tissue boolean, whether to split the graph in facets by tissue.
 #'
 #' @return
@@ -296,13 +271,13 @@ plotJunctionCategories(annot_junc_prop_df, level = "Type", split_tissue = T)
 
 ### Level 2 (AtaxiaSubtype) {-}
 
-```{r, fig.height=7.2, fig.width=7.2, fig.cap="Proportion of junctions by Ataxia Subtype and tissue."}
+```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of junctions by Ataxia Subtype and tissue."}
 plotJunctionCategories(annot_junc_prop_df, level = "AtaxiaSubtype", split_tissue = T)
 ```
 
 ### Level 3 (Diagnosis) {-}
 
-```{r, fig.height=7.2, fig.width=8, fig.cap="Proportion of junctions by Diagnosis and tissue."}
+```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue."}
 plotJunctionCategories(annot_junc_prop_df %>%
                          dplyr::filter(Diagnosis %in% c("Control", "FRDA", "SCA1", "SCA2", "SCA6")), 
                        level = "Diagnosis", split_tissue = T)
@@ -317,10 +292,9 @@ Next, we also represent the proportion of counts (or reads) that correspond to e
 #'
 #' @param annot_junc_prop_df dataframe, contains the proportion of counts for
 #'   each category and sample.
-#' @param level character vector, specifies the level of study. In this
-#'   function, is the name of the column that will split the graph and the
-#'   Wilcoxon tests. For the Ataxia RNAseq data, only "Region", "AtaxiaSubtype"
-#'   and "Diagnosis" are valid inputs.
+#' @param level character vector, specifies the level of study. Name of the
+#'   column that will split the graph and the Wilcoxon tests. For the Ataxia
+#'   RNAseq data, only "Type", "AtaxiaSubtype" and "Diagnosis" are valid inputs.
 #' @param tissue character vector, tissue to use to graph. Leave as NULL if no
 #'   distinction is used.
 #' @param ref_group character vector, category in the \code{level} field that
@@ -452,13 +426,13 @@ plotJunctionCategories(annot_junc_prop_df, level = "Type", split_tissue = T)
 
 ### Level 2 (AtaxiaSubtype) {-}
 
-```{r, fig.height=7.2, fig.width=7.2, fig.cap="Proportion of junctions by Ataxia Subtype and tissue."}
+```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of junctions by Ataxia Subtype and tissue."}
 plotJunctionCategories(annot_junc_prop_red_df, level = "AtaxiaSubtype", split_tissue = T)
 ```
 
 ### Level 3 (Diagnosis) {-}
 
-```{r, fig.height=7.2, fig.width=8, fig.cap="Proportion of junctions by Diagnosis and tissue."}
+```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue."}
 plotJunctionCategories(annot_junc_prop_red_df %>%
                          dplyr::filter(Diagnosis %in% c("Control", "FRDA", "SCA1", "SCA2", "SCA6")), 
                        level = "Diagnosis", split_tissue = T)
@@ -470,13 +444,13 @@ plotJunctionCategories(annot_junc_prop_red_df %>%
 
 #### Cerebellum {-}
 
-```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
+```{r, fig.height=3, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
 plotJunctionCountCategories(annot_junc_prop_red_df, level = "Type", tissue = "Cerebellum")
 ```
 
 #### Frontal {-}
 
-```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
+```{r, fig.height=3, fig.width=9, fig.cap="Proportion of counts by disease status and brain tissue."}
 plotJunctionCountCategories(annot_junc_prop_red_df, level = "Type", tissue = "Frontal")
 ```
 
@@ -511,303 +485,3 @@ plotJunctionCountCategories(annot_junc_prop_red_df %>%
                               dplyr::filter(Diagnosis %in% c("Control", "FRDA", "SCA1", "SCA2", "SCA6")), 
                             level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
 ```
-
-<!-- # OLD -->
-
-<!-- ## Proportion of junction categories {.tabset} -->
-
-<!-- ```{r, eval = F} -->
-<!-- name_list_three = list("Annotated" = "annotated", "Partially Annotated" = "novel_donor", "Partially Annotated" = "novel_acceptor", "Partially Annotated" = "novel_exon_skip", "Partially Annotated" = "novel_combo", "Partially Annotated" = "ambig_gene", "Unannotated" = "unannotated") -->
-
-
-<!-- annot_red_df_prop_reduced <- annot_ref_df %>%  -->
-<!--   dplyr::mutate(type = factor(names(name_list_three[type]),  -->
-<!--                               levels = c("Annotated", "Partially Annotated", "Unannotated")))  %>%  -->
-<!--   dplyr::group_by(sample_id, type) %>% -->
-<!--   dplyr::summarise(n_junc = n(), count = sum(count)) %>% -->
-<!--   dplyr::left_join(colData(rse_jx) %>%  -->
-<!--                      tibble::as_tibble(rownames = "sample_id") %>% -->
-<!--                      dplyr::select(sample_id, total_reads), -->
-<!--                    by = "sample_id") %>% -->
-<!--   dplyr::group_by(sample_id) %>% -->
-<!--   dplyr::mutate(total_junc = sum(n_junc), -->
-<!--                 total_count = sum(count), -->
-<!--                 prop_junc = n_junc/total_junc, -->
-<!--                 prop_count = count/total_count, -->
-<!--                 prop_mapped_reads = count/total_reads) %>% -->
-<!--   dplyr::select(-total_reads) %>% -->
-<!--   dplyr::left_join(colData(rse_jx) %>%  -->
-<!--                      tibble::as_tibble(rownames = "sample_id") %>% -->
-<!--                      dplyr::select(sample_id, Type, Diagnosis, AtaxiaSubtype, Region), -->
-<!--                    by = "sample_id") -->
-<!-- ``` -->
-
-<!-- ```{r, fig.height=8, fig.width=9, dpi = 300, eval = F} -->
-<!-- annot_red_df_prop <- annot_ref_df %>%  -->
-<!--   dplyr::group_by(sample_id, type) %>% -->
-<!--   dplyr::summarise(n_junc = n(), count = sum(count)) %>% -->
-<!--   dplyr::left_join(colData(rse_jx) %>%  -->
-<!--                      tibble::as_tibble(rownames = "sample_id") %>% -->
-<!--                      dplyr::select(sample_id, total_reads), -->
-<!--                    by = "sample_id") %>% -->
-<!--   dplyr::group_by(sample_id) %>% -->
-<!--   dplyr::mutate(total_junc = sum(n_junc), -->
-<!--                 total_count = sum(count), -->
-<!--                 prop_junc = n_junc/total_junc, -->
-<!--                 prop_count = count/total_count, -->
-<!--                 prop_mapped_reads = count/total_reads) %>% -->
-<!--   dplyr::select(-total_reads) %>% -->
-<!--   dplyr::left_join(colData(rse_jx) %>%  -->
-<!--                      tibble::as_tibble(rownames = "sample_id") %>% -->
-<!--                      dplyr::select(sample_id, Type, Diagnosis, AtaxiaSubtype, Region), -->
-<!--                    by = "sample_id") -->
-
-<!-- levels(annot_red_df_prop$type) <- name_list -->
-<!-- ``` -->
-
-<!-- ### Level 1 (Type) {-} -->
-
-<!-- ```{r, fig.height=5, fig.width=7.2, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced, -->
-<!--        aes(x = type, y = prop_junc, fill = Region)) + -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.01, 0)), limits = c(0, 1)) + -->
-<!--   labs(x = "", y = "Proportion of junctions") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) + -->
-<!--   ggpubr::geom_pwc(aes(group = Region), label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "panel", vjust = -0.5, hide.ns = T) + -->
-<!--   #facet_wrap(vars(Region), ncol = 1) + -->
-<!--   custom_gg_theme -->
-<!-- ``` -->
-
-<!-- ### Level 2 (AtaxiaSubtype) {-} -->
-
-<!-- ```{r, fig.height=7.2, fig.width=7.2, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced, -->
-<!--        aes(x = type, y = prop_junc, fill = AtaxiaSubtype)) +  -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.01, 0.1))) + -->
-<!--   labs(x = "", y = "Proportion of junctions", fill = "Ataxia Subtype") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9)]) + -->
-<!--   facet_wrap(vars(Region), ncol = 1) + -->
-<!--   ggpubr::geom_pwc(aes(group = AtaxiaSubtype), label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "group", vjust = -0.3, hide.ns = T) + -->
-<!--   custom_gg_theme -->
-<!-- ``` -->
-
-<!-- ### Level 3 (Diagnosis) {-} -->
-
-<!-- ```{r, fig.height=7.2, fig.width=8, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced %>% -->
-<!--          filter(Diagnosis %in% c("Control", "FRDA", "SCA1", "SCA2", "SCA6")), -->
-<!--        aes(x = type, y = prop_junc, fill = Diagnosis)) + -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.01, 0.1))) + -->
-<!--   labs(x = "", y = "Proportion of junctions", fill = "Diagnosis") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9, 2, 7)]) + -->
-<!--   facet_wrap(vars(Region), ncol = 1) + -->
-<!--   ggpubr::geom_pwc(aes(group = Diagnosis), ref.group = "Control",  -->
-<!--                    label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "group", vjust = -0.3, hide.ns = T) + -->
-<!--   custom_gg_theme -->
-<!-- ``` -->
-
-<!-- ## Counts {.tabset} -->
-
-<!-- ### Level 1 (Type) {-} -->
-
-<!-- ```{r, fig.height=3, fig.width=9, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced, -->
-<!--        aes(x = Region, y = prop_count, fill = Region)) + -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) + -->
-<!--   labs(x = "", y = "Proportion of junctions") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   ggpubr::geom_pwc(label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "panel", vjust = -0.3, hide.ns = T) +  -->
-<!--   custom_gg_theme + theme(axis.text.x = element_blank(), -->
-<!--                           axis.ticks.length.x = unit(0, "cm")) -->
-<!-- ``` -->
-
-<!-- ### Level 2 (AtaxiaSubtype) {.tabset -} -->
-
-<!-- #### Cerebellum {-} -->
-
-<!-- ```{r, fig.height=3, fig.width=9, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced %>% dplyr::filter(Region == "Cerebellum"), -->
-<!--        aes(x = AtaxiaSubtype, y = prop_count, fill = AtaxiaSubtype)) + -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) + -->
-<!--   labs(x = "", y = "Proportion of junctions") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9)]) + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   ggpubr::geom_pwc(label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "group", vjust = -0.3, hide.ns = T) +  -->
-<!--   ggtitle("", subtitle = "Tissue: Cerebellum") + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   custom_gg_theme_subtitle + theme(axis.text.x = element_blank(), -->
-<!--                           axis.ticks.length.x = unit(0, "cm")) -->
-<!-- ``` -->
-
-<!-- #### Frontal Cortex {-} -->
-
-<!-- ```{r, fig.height=3, fig.width=9, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced %>% dplyr::filter(Region == "Frontal"), -->
-<!--        aes(x = AtaxiaSubtype, y = prop_count, fill = AtaxiaSubtype)) + -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) + -->
-<!--   labs(x = "", y = "Proportion of junctions") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9)]) + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   ggpubr::geom_pwc(label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "group", vjust = -0.3, hide.ns = T) +  -->
-<!--   ggtitle("", subtitle = "Tissue: Frontal Cortex") + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   custom_gg_theme_subtitle + theme(axis.text.x = element_blank(), -->
-<!--                           axis.ticks.length.x = unit(0, "cm")) -->
-<!-- ``` -->
-
-<!-- ### Level 3 (Diagnosis) {.tabset -} -->
-
-<!-- #### Cerebellum {-} -->
-
-<!-- ```{r, fig.height=3, fig.width=9, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced  %>% -->
-<!--          filter(Diagnosis %in% c("Control", "FRDA", "SCA1", "SCA2", "SCA6")) %>%  -->
-<!--          dplyr::filter(Region == "Cerebellum"), -->
-<!--        aes(x = Diagnosis, y = prop_count, fill = Diagnosis)) + -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) + -->
-<!--   labs(x = "", y = "Proportion of junctions") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9, 2, 7)]) + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   ggpubr::geom_pwc(aes(group = Diagnosis), ref.group = "Control",  -->
-<!--                    label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "group", vjust = -0.3, hide.ns = T) +  -->
-<!--   ggtitle("", subtitle = "Tissue: Cerebellum") + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   custom_gg_theme_subtitle + theme(axis.text.x = element_blank(), -->
-<!--                                    axis.ticks.length.x = unit(0, "cm")) -->
-<!-- ``` -->
-
-<!-- #### Frontal Cortex {-} -->
-
-<!-- ```{r, fig.height=3, fig.width=9, eval = F} -->
-<!-- ggplot(annot_red_df_prop_reduced  %>% -->
-<!--          filter(Diagnosis %in% c("Control", "FRDA", "SCA1", "SCA2", "SCA6")) %>%  -->
-<!--          dplyr::filter(Region == "Frontal"), -->
-<!--        aes(x = Diagnosis, y = prop_count, fill = Diagnosis)) + -->
-<!--   geom_boxplot() + -->
-<!--   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) + -->
-<!--   labs(x = "", y = "Proportion of junctions") + -->
-<!--   scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9, 2, 7)]) + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   ggpubr::geom_pwc(aes(group = Diagnosis), ref.group = "Control",  -->
-<!--                    label = " p = {p.adj.format}", p.adjust.method = "bonferroni",  -->
-<!--                    p.adjust.by = "group", vjust = -0.3, hide.ns = T) +  -->
-<!--   ggtitle("", subtitle = "Tissue: Frontal Cortex") + -->
-<!--   facet_wrap(vars(type), ncol = 3, scales = "free") + -->
-<!--   custom_gg_theme_subtitle + theme(axis.text.x = element_blank(), -->
-<!--                                    axis.ticks.length.x = unit(0, "cm")) -->
-<!-- ``` -->
-
-<!-- # Pipeline -->
-
-<!-- ## Loading the junctions in samples -->
-
-<!-- The first step of the pipeline is to extract the junctions from the studied BAM files. The process is split in two steps: -->
-
-<!-- 1. **Download and extraction of BAM files**: the files are downloaded from `s3://ataxia-bulk-rnaseq/nextflow_first_attemp/Star_2_pass_by_indv/output/STAR/align/BAM_files/` and subfolders. -->
-
-<!-- 2. **Junction extraction**: all junctions are extracted using [`regtools junction extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) after [sorting](http://www.htslib.org/doc/samtools-sort.html) and [indexing](http://www.htslib.org/doc/samtools-index.html) with [`samtools`](http://www.htslib.org/). A file is created for each BAM file in BED12 format. -->
-
-<!-- Once the junctions are extracted, we load them into a single table where the reads per sample are also registered. -->
-
-<!-- ```{r, eval = F} -->
-<!-- all_reads_combined_2 <- junctionReading(metadata = metadata,  -->
-<!--                                       main_samples_path = main_samples_path, -->
-<!--                                       num_cores = 10, -->
-<!--                                       rw_disk = T, -->
-<!--                                       overwrite = F) -->
-<!-- ``` -->
-
-<!-- ## Removing background noise -->
-
-<!-- Next, we remove the junctions located within the ENCODE blacklisted regions v2 and those smaller than 25 bp (base pairs). -->
-
-<!-- ```{r, eval = F} -->
-<!-- all_reads <- all_reads_combined %>% -->
-<!--   dplyr::select(junID, seqnames, start, end, width, strand) %>% -->
-<!--   GenomicRanges::GRanges() -->
-
-<!-- ## Remove ENCODE blacklisted regions -->
-<!-- encode_blacklist_hg38 <- loadEncodeBlacklist(blacklist_path) -->
-<!-- all_reads_pruned <- removeEncodeBlacklistRegions(all_reads, encode_blacklist_hg38) -->
-
-<!-- # ## Remove junctions shorter than 25bp -->
-<!-- # all_reads_pruned <- removeShortJunctions(all_reads_pruned) -->
-<!-- ``` -->
-
-<!-- ## Junction annotation -->
-
-<!-- ```{r, eval = F} -->
-<!-- ## Annotate using Dasper package -->
-<!-- edb <- loadEdb(gtf_path) -->
-<!-- annotated_SR_details <- annotateDasper(all_reads_pruned, edb) %>%  -->
-<!--   tibble::as_tibble() -->
-
-<!-- #annotated_SR_details <- removeAmbiguousGenes(annotated_SR_details) -->
-<!-- ``` -->
-
-<!-- **Prior to gene limitation** -->
-
-<!-- ## Proportion of junction category  -->
-
-<!-- ```{r, eval = F} -->
-<!-- junction_details <- annotated_SR_details %>%  -->
-<!--   dplyr::select(junID, type) %>% -->
-<!--   dplyr::left_join(all_reads_combined, by = "junID") -->
-
-<!-- junction_details %>% saveRDS(here("junction_details.rds")) -->
-
-<!-- junction_SR_details <- junction_details %>% -->
-<!--   dplyr::select(-seqnames, -start, -end, -width, -strand) %>% -->
-<!--   tidyr::pivot_longer(cols = -c(junID, type), names_to = "Correct_sample", values_to = "reads") -->
-
-<!-- junction_SR_details <- junction_SR_details[!is.na(junction_SR_details$reads), ] -->
-
-<!-- junction_metadata <- junction_SR_details %>% -->
-<!--   dplyr::left_join(metadata %>%  -->
-<!--                      dplyr::select(Correct_sample, Type, Diagnosis, AtaxiaSubtype, Region), -->
-<!--                    by = "Correct_sample") -->
-<!-- ``` -->
-
-<!-- ```{r, fig.height=8, fig.width=9, dpi = 300, eval = F} -->
-<!-- junction_data <- junction_metadata %>%  -->
-<!--   dplyr::group_by(Correct_sample, type) %>% -->
-<!--   dplyr::summarise(n_junc = n(), count = sum(reads)) %>% -->
-<!--   dplyr::group_by(Correct_sample) %>% -->
-<!--   dplyr::mutate(total_junc = sum(n_junc), -->
-<!--                 total_count = sum(count), -->
-<!--                 prop_junc = n_junc/total_junc, -->
-<!--                 prop_count = count/total_count) %>% -->
-<!--   dplyr::left_join(metadata %>%  -->
-<!--                      dplyr::select(Correct_sample, Type, Diagnosis, AtaxiaSubtype, Region), -->
-<!--                    by = "Correct_sample") -->
-
-<!-- ggplot(junction_data, -->
-<!--        aes(x = type, y = prop_junc, fill = Diagnosis)) + -->
-<!--   geom_boxplot() + -->
-<!--   facet_wrap(vars(Region), scales = "free", ncol = 1) + -->
-<!--   custom_gg_theme -->
-<!-- ``` -->
-
-<!-- ```{r, fig.height=5, fig.width=9, dpi = 300, eval = F} -->
-<!-- ggplot(junction_data, -->
-<!--        aes(x = type, y = prop_count, fill = Diagnosis)) + -->
-<!--   geom_boxplot() + -->
-<!--   facet_wrap(vars(type), scales = "free") +  -->
-<!--   custom_gg_theme -->
-<!-- ``` -->
-

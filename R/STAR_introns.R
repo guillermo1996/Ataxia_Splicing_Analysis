@@ -238,25 +238,28 @@ removeAmbiguousGenesRSE <- function(rse_jx) {
 #'
 #' @param annot_junc_prop_df dataframe, contains the proportion of junctions for
 #'   each category and each sample.
-#' @param level character vector, specifies the level of study. In this
-#'   function, is the name of the column that will split the graph and the
-#'   Wilcoxon tests. For the Ataxia RNAseq data, only "Region", "AtaxiaSubtype"
-#'   and "Diagnosis" are valid inputs.
+#' @param level character vector, specifies the level of study. Name of the
+#'   column that will split the graph and the Wilcoxon tests. For the Ataxia
+#'   RNAseq data, only "Type", "AtaxiaSubtype" and "Diagnosis" are valid inputs.
 #' @param split_tissue boolean, whether to split the graph in facets by tissue.
 #'
 #' @return
 #' @export
-plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, ref_group = NULL){
+plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
   p <- ggplot(annot_junc_prop_df,
               aes(x = type, y = prop_junc, fill = !!sym(level))) +
     geom_boxplot() +
-    scale_y_continuous(expand = expansion(mult = c(0.0, 0.15)), limits = c(0, NA), breaks = seq(0, 1, 0.2)) +
+    scale_y_continuous(expand = expansion(mult = c(0.01, 0.15))) +
     labs(x = "", y = "Proportion of junctions") +
-    scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9, 2, 7)]) + 
-    ggpubr::geom_pwc(aes(group = !!sym(level)), ref.group = ref_group, vjust = -0.5, hide.ns = T,
-                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+    scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
+    ggpubr::geom_pwc(aes(group = !!sym(level)), label = " p = {p.adj.format}", p.adjust.method = "bonferroni", 
+                     p.adjust.by = "group", vjust = -0.5, hide.ns = T) +
     custom_gg_theme
-  if(split_tissue) p <- p + facet_wrap(vars(Region), ncol = 1)
+  if(split_tissue){
+    p <- p + 
+      facet_wrap(vars(Region), ncol = 1) + 
+      scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(3, 1, 9, 2, 7)])
+  }
   
   return(p)
 }
@@ -265,10 +268,9 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, 
 #'
 #' @param annot_junc_prop_df dataframe, contains the proportion of counts for
 #'   each category and sample.
-#' @param level character vector, specifies the level of study. In this
-#'   function, is the name of the column that will split the graph and the
-#'   Wilcoxon tests. For the Ataxia RNAseq data, only "Region", "AtaxiaSubtype"
-#'   and "Diagnosis" are valid inputs.
+#' @param level character vector, specifies the level of study. Name of the
+#'   column that will split the graph and the Wilcoxon tests. For the Ataxia
+#'   RNAseq data, only "Type", "AtaxiaSubtype" and "Diagnosis" are valid inputs.
 #' @param tissue character vector, tissue to use to graph. Leave as NULL if no
 #'   distinction is used.
 #' @param ref_group character vector, category in the \code{level} field that

@@ -1,0 +1,626 @@
+---
+title: "Ataxia RNAseq targeted gene level - Junction category distributions"
+author: 
+- name: "Guillermo Rocamora Pérez"
+  affiliation: UCL - Version 1.0
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  bookdown::html_document2:
+    figure_caption: yes
+    code_folding: hide
+    theme: paper
+    highlight: haddock
+    df_print: paged
+    toc: true
+    toc depth: 3
+    toc_float: true
+    number_sections: true
+  md_document:
+    variant: markdown_github
+    toc: true
+    number_sections: true
+always_allow_html: true
+---
+
+```{r setup, include = F}
+## Load libraries
+shhh <- suppressPackageStartupMessages
+shhh(library(here))
+shhh(library(SummarizedExperiment))
+shhh(library(ggsci))
+shhh(library(tidyverse))
+shhh(library(foreach))
+shhh(library(doParallel))
+
+## Load helper functions
+source(here::here("R/STAR_introns.R"))
+source(here::here("R/hf_graph_and_themes.R"))
+source(here::here("R/hf_junction_annotation.R"))
+
+## Set options
+options(dplyr.summarise.inform = FALSE)
+options(lifecycle_verbosity = "warning")
+options(scipen = 999)
+knitr::opts_chunk$set(echo = F, warning = F, message = F, out.width="100%", fig.align = "center", dpi = 200)
+```
+
+```{r load-theme, echo = F, results = "asis"}
+## Custom sciRmdTheme with increased width.
+## Please ask guillermorocamora@gmail.com for more details.
+sciRmdTheme::set.theme(
+  theme = "default",
+  color = NULL,
+  header.sticky = FALSE,
+  list.group.icon = "arrow",
+  font.family = "Arial",
+  font.color = "black",
+  header.color = "darkblue"
+)
+
+## Custom styles for the output html
+cat('
+<style type="text/css">
+.dataTables_scrollHeadInner{
+  width:100% !important;
+}
+.dataTables_scrollHeadInner table{
+  width:100% !important;
+}
+/*
+.code-folding-btn {
+  display: none;
+}
+*/
+h3, .h3 {
+  font-size: 22px!important;
+}
+h4, .h4 {
+  font-size: 18px!important;
+}
+h5, .h5 {
+  font-size: 16px!important;
+}
+body{
+  font-size: 13px;
+}
+pre {
+  line-height: 1;
+}
+.tocify-subheader {
+    text-indent: 15px;
+    display: none;
+    font-size: 12px;
+}
+</style>')
+```
+
+# Background
+> Aim: study the distribution of the annotated junction categories for specific ataxia related genes.
+
+Based on the analysis for STAR annotated introns, this report is focused on five causative Mendelian genes for Ataxia: ATXN1, ATXN2, ATXN7, CACNA1A and FXN. The results will be split by Ataxia diagnosis: Control, SCA1, SCA2, SCA6 and FRDA.
+
+```{r, echo = T}
+# Variables
+ataxia_genes <- c("FXN", "ATXN1", "ATXN2", "ATXN7", "CACNA1A")
+
+# Paths
+metadata_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/metadata/metadata.csv"
+multiqc_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/metadata/multiqc_rseqc_read_distribution.txt"
+
+path_to_bam_files <- "/home/grocamora/RytenLab-Research/11-Ataxia_bulk/Zhongbo_Script/all_filtered_BAM/"
+path_to_junc_files <- "/home/grocamora/RytenLab-Research/11-Ataxia_bulk/Zhongbo_Script/all_filtered_JUNC/"
+
+# Require software paths
+samtools_path <- "/home/grocamora/tools/samtools/bin/"
+regtools_path <- "/home/grocamora/tools/regtools/build/"
+
+# Path to the gtf file to annotate the introns and the ENCODE blacklisted region
+gtf_ensembl_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
+gtf_gencode_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf"
+blacklist_path = "/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed"
+
+## Load the metadata
+metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>% 
+  dplyr::rowwise() %>%
+  dplyr::mutate(Individual_ID = stringr::str_split(ID_anon, "_", simplify = T)[1]) %>%
+  dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1"))) %>%
+  extractReadDepthMultiQC(multiqc_path)
+```
+
+# Pipeline
+
+## Loading the junctions in samples
+
+The first step of the pipeline is to extract the junctions from the studied BAM files. The process is split in two steps:
+
+1. **Download and extraction of BAM files**: the files are downloaded from `s3://ataxia-bulk-rnaseq/nextflow_first_attemp/Star_2_pass_by_indv/output/STAR/align/BAM_files/` and subfolders. The BAM files are then filtered to extract the information from the relevant genes studied in this report.
+
+2. **Junction extraction**: all junctions are extracted using [`regtools junction extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) after [sorting](http://www.htslib.org/doc/samtools-sort.html) and [indexing](http://www.htslib.org/doc/samtools-index.html) with [`samtools`](http://www.htslib.org/). A file is created for each BAM file in BED12 format.
+
+```{r, echo = T, tidy=FALSE}
+dir.create(path_to_junc_files, showWarnings = F)
+#doParallel::registerDoParallel(8) # Whether to use multiprocessing
+
+junc_files_df <- foreach(i = seq_len(nrow(metadata)), .packages = c("tidyverse")) %dopar%{
+  row = metadata[i, ]
+  sample_name = row$Correct_sample
+  sample_diagnosis = row$Diagnosis
+  
+  sample_files_df <- foreach(j = seq_along(ataxia_genes)) %do%{
+    gene_name <- ataxia_genes[j]
+    
+    bam_path <- paste0(path_to_bam_files, sample_name, "_", sample_diagnosis, "_", gene_name, ".bam")
+    sort_path <- paste0(bam_path, ".sort")
+    junc_path <- paste0(path_to_junc_files, sample_name, "_", sample_diagnosis, "_", gene_name, ".bam.sort.s0.junc")
+    
+    # Execute the extraction pipeline if the junc file does not exists
+    if(!file.exists(junc_path)){
+      # Sort the BAM file (samtools)
+      system2(command = paste0(samtools_path, "samtools"), args = c(
+        "sort", bam_path,
+        "-o", sort_path
+      ))
+  
+      # Index the BAM file (samtools)
+      system2(command = paste0(samtools_path, "samtools"), args = c(
+        "index", sort_path
+      ))
+  
+      # Extract the juntions (regtools)
+      system2(command = paste0(regtools_path, "regtools"), args = c(
+        "junctions extract", sort_path,
+        "-m 25",
+        "-M 1000000",
+        "-s 0",
+        "-o", junc_path
+      ))
+  
+      # Remove side products
+      system2(command = "rm", args = c(sort_path))
+      system2(command = "rm", args = c(paste0(sort_path, ".bai")))
+    }
+    
+    # Return information about the junc file created
+    return(tibble::tibble(sample_name = sample_name,
+                          gene_name = gene_name,
+                          junc_file_exists = file.exists(junc_path),
+                          junc_file_path = junc_path))
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows()
+```
+
+3. Once the junctions are extracted, load them into a single table where the reads per sample are registered.
+
+```{r, echo = T}
+#doParallel::registerDoParallel(8) # Whether to use multiprocessing
+all_junc <- foreach(i = seq_len(nrow(metadata)), .packages = c("tidyverse")) %dopar%{
+  row = metadata[i, ]
+  sample_name = row$Correct_sample
+  sample_diagnosis = row$Diagnosis
+  
+  sample_junctions <- foreach(j = seq_along(ataxia_genes)) %do%{
+    gene_name <- ataxia_genes[j]
+    junc_path <- paste0(path_to_junc_files, sample_name, "_", sample_diagnosis, "_", gene_name, ".bam.sort.s0.junc")
+    
+    # If file not found, return empty tibble
+    if(!file.exists(junc_path)) return(tibble())
+    
+    # Read the junction file
+    junc <- readr::read_table(junc_path, col_names = F, col_types = "cddcdcddcdcc", 
+                              progress = F, locale = readr::locale(grouping_mark = ""))
+    
+    # Transformations of the junctions
+    junc <- junc %>%
+      dplyr::select(chr = X1, start = X2, stop = X3, junID = X4, reads = X5, strand = X6, blockSizes = X11 ) %>%
+      dplyr::mutate(strand = ifelse(strand == "?", "*", strand)) %>%
+      dplyr::mutate(sample_id = sample_name,
+                    gene_name = gene_name) %>%
+      tidyr::separate(col = blockSizes, sep = ",", c("blockSizesStart", "blockSizesEnd"), conver = T) %>%
+      dplyr::mutate(start = start + blockSizesStart + 1, stop = stop - blockSizesEnd) %>%
+      GenomicRanges::GRanges() %>%
+      diffloop::rmchr() %>%
+      tibble::as_tibble() %>%
+      dplyr::mutate(seqnames = as.character(seqnames),
+                    strand = as.character(strand)) %>%
+      dplyr::select(-junID, -blockSizesStart, -blockSizesEnd)
+    
+    return(junc)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows()
+
+# Unique ID for each junction and generate the reads table
+all_reads_combined <- all_junc %>%
+  dplyr::group_by(seqnames, start, end) %>%
+  dplyr::mutate(junID = dplyr::cur_group_id(), .before = seqnames) %>%
+  dplyr::ungroup() %>%
+  tidyr::pivot_wider(values_from = reads, names_from = c(sample_id, gene_name)) %>%
+  replace(is.na(.), 0)
+```
+
+## Junction annotation
+
+Junctions are first filtered: (i) removing all junctions that overlap with the ENCODE blacklisted region and (ii) removing all junctions that are less than 25 bp long. Then, junctions are annotated using [dasper](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) function `junction_annot` and a reference transcriptome (GENCODE v43 in this report).
+
+Additionally, all junctions associated to more than one gene are removed as they are considered ambiguous.
+
+```{r, echo = T}
+# The annotation process takes some time, so execute only if the output is not found on disk.
+gene_specific_annotated_path <-  "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/variables/gene_specific_annotated.rds"
+
+if(!file.exists(gene_specific_annotated_path)){
+  # Convert the junctions to GR object
+  all_junc_gr <- all_reads_combined %>%
+    dplyr::select(junID, seqnames, start, end, width, strand) %>%
+    GenomicRanges::GRanges()
+  
+  # Filter by ENCODE blacklisted region
+  encode_blacklist_hg38 <- loadEncodeBlacklist(blacklist_path)
+  all_junc_gr <- removeEncodeBlacklistRegions(all_junc_gr, encode_blacklist_hg38)
+  
+  # Filter junctions < 25bp long
+  all_junc_gr <- all_junc_gr[which(width(all_junc_gr) >= 25), ]
+  
+  # Load the reference transcriptome. Some reference transcriptomes (i.e. Gencode)
+  # use the characters "chr" before the seqnames. To bring consistency, the
+  # "seqlevelsStyle" is set to "NCBI".
+  TxDb_ref <- dasper:::ref_load(gtf_gencode_path) %>% `seqlevelsStyle<-`("NCBI")
+  
+  # Annotate the junctions
+  annot_junc_gr <- all_junc_gr %>% dasper::junction_annot(ref = TxDb_ref)
+  
+  # Filter ambiguous genes
+  annot_junc_gr <- annot_junc_gr[which(sapply(annot_junc_gr$gene_id_junction, length) < 2), ]
+  
+  # Remove unnecesary columns
+  annot_junc <- annot_junc_gr %>% 
+    tibble::as_tibble() %>%
+    dplyr::select(junID, seqnames, start, end, width, strand, type)
+  
+  annot_junc %>% saveRDS(gene_specific_annotated_path)
+}else{
+  annot_junc <- readRDS(gene_specific_annotated_path)
+}
+```
+
+Lastly, we combine the reads and the annotation category into a single table. An example of the final table:
+
+```{r, echo = T}
+annot_junc_df <- annot_junc %>% 
+  dplyr::left_join(all_reads_combined %>% dplyr::select(-c(seqnames, start, end, width, strand)), 
+                   by = "junID") %>%
+  dplyr::select(-c(seqnames, start, end, width, strand)) %>%
+  tidyr::pivot_longer(cols = -c(junID, type), names_to = "sample_id", values_to = "count") %>%
+  dplyr::filter(count > 0) %>%
+  dplyr::mutate(gene_name = gsub("^.*_", "", sample_id),
+                sample_id = gsub("_[a-zA-Z1-9]*$", "", sample_id),
+                .before = count) 
+
+annot_junc_df %>%
+  dplyr::sample_n(10) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16)
+```
+
+# Overview of the junctions
+
+To better understand the results presented in the report, it is important to consider the number of junctions associated to each gene. The following graph represents the number of junctions associated to each of the studies genes. Each point represent a sample from where the junctions were extracted.
+
+```{r, fig.width=7.2, fig.height=4.5, fig.cap="Number of junctions associated to each of the studied genes. The low number of junctions for gene FXN explain the inconsistent results found in later sections."}
+annot_junc_df %>%
+  dplyr::group_by(sample_id, gene_name) %>%
+  dplyr::count() %>%
+  dplyr::ungroup() %>%
+  ggplot(aes(x = gene_name, y = n, fill = gene_name)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(4, 1, 9, 2, 7)], name = "Studied gene") + 
+  labs(x = "Gene", y = "Number of junctions") +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.03))) +
+  custom_gg_theme
+```
+
+# Visualization of all junction categories
+
+The first plots shown here represent the distributions using all categories from the `dasper` annotation function.
+
+Across all visualizations, a Wilcoxon signed-rank test between the distributions was executed, and significant results ($p<0.05$) are shown in the graphs. The p-values are Bonferroni corrected given the number of tests executed per group.
+
+```{r}
+category_names <- c("annotated" = "Annotated",
+                    "novel_acceptor" = "Novel Acceptor",  
+                    "novel_donor" = "Novel Donor", 
+                    "novel_exon_skip" = "Novel Exon Skip", 
+                    "novel_combo" = "Novel Combo", 
+                    "ambig_gene" = "Ambig. genes", 
+                    "unannotated" = "Unannotated")
+
+# Summarize the proportions by junction category and sample
+annot_junc_prop_df <- annot_junc_df %>% 
+  dplyr::mutate(type = factor(category_names[type %>% as.character()], levels = category_names)) %>%
+  dplyr::group_by(sample_id, gene_name, type) %>%
+  dplyr::summarise(n_junc = n(), count = sum(count)) %>%
+  dplyr::group_by(sample_id, gene_name) %>%
+  dplyr::mutate(total_junc = sum(n_junc),
+                total_count = sum(count),
+                prop_junc = n_junc/total_junc,
+                prop_count = count/total_count) %>%
+  dplyr::left_join(metadata %>% 
+                     dplyr::select(sample_id = Correct_sample, Type, Diagnosis, AtaxiaSubtype, Region),
+                   by = "sample_id") %>%
+  dplyr::mutate(Type = factor(Type, levels = c("Control", "Case")),
+                Region = factor(Region, levels = c("Cerebellum", "Frontal"))) %>%
+  dplyr::filter(Diagnosis %in% c("Control", "SCA1", "SCA2", "SCA6", "FRDA"))
+```
+
+## Proportion of junctions by category {.tabset}
+
+First, we plot the category percentages by sample. We employ the function `plotJunctionCategories`. [Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/STAR_intron_annotation.html#4_Proportion_annotatedpartially_annotatedunannotated_per_group).
+
+### Level 3 (Diagnosis) {.tabset -}
+
+#### All genes {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for all junctions found within the studied genes."}
+plotJunctionCategories(annot_junc_prop_df, level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### ATXN1 {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the ATXN1 gene."}
+plotJunctionCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN1"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### ATXN2 {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the ATXN2 gene."}
+plotJunctionCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN2"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### ATXN7 {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the ATXN7 gene."}
+plotJunctionCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN7"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### CACNA1A {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the CACNA1A gene."}
+plotJunctionCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "CACNA1A"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### FXN {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the FXN gene."}
+plotJunctionCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "FXN"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+## Proportion of counts by category {.tabset}
+
+Next, we also represent the proportion of counts (or reads) that correspond to each category when compared against the total number of junction reads. We use the function `plotJunctionCountCategories`.
+
+### Level 3 (Diagnosis) {.tabset -}
+
+#### All genes {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located within all studied genes and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_df, level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located within all studied genes and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_df, level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### ATXN1 {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN1 gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN1"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN1 gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN1"), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### ATXN2 {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN2 gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN2"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN2 gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN2"), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### ATXN7 {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN7 gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN7"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN7 gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "ATXN7"),
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### CACNA1A {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the CACNA1A gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "CACNA1A"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the CACNA1A gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "CACNA1A"), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### FXN {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the FXN gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "FXN"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the FXN gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_df %>% dplyr::filter(gene_name == "FXN",), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+# Visualization for three categories
+
+Lastly, the same visualizations are presented but using only three categories: `Annotated`, `Partially annotated` and `Unannotated`.
+
+```{r}
+category_names_red <- c("annotated" = "Annotated",
+                        "novel_acceptor" = "Partially Annotated",  
+                        "novel_donor" = "Partially Annotated", 
+                        "novel_exon_skip" = "Partially Annotated", 
+                        "novel_combo" = "Partially Annotated", 
+                        "ambig_gene" = "Ambig. genes", 
+                        "unannotated" = "Unannotated")
+
+# Summarize the proportions by junction category and sample
+annot_junc_prop_red_df <- annot_junc_df %>% 
+  dplyr::mutate(type = factor(category_names_red[type %>% as.character()], levels = unique(category_names_red))) %>%
+  dplyr::group_by(sample_id, gene_name, type) %>%
+  dplyr::summarise(n_junc = n(), count = sum(count)) %>%
+  dplyr::group_by(sample_id, gene_name) %>%
+  dplyr::mutate(total_junc = sum(n_junc),
+                total_count = sum(count),
+                prop_junc = n_junc/total_junc,
+                prop_count = count/total_count) %>%
+  dplyr::left_join(metadata %>% 
+                     dplyr::select(sample_id = Correct_sample, Type, Diagnosis, AtaxiaSubtype, Region),
+                   by = "sample_id") %>%
+  dplyr::mutate(Type = factor(Type, levels = c("Control", "Case")),
+                Region = factor(Region, levels = c("Cerebellum", "Frontal"))) %>%
+  dplyr::filter(Diagnosis %in% c("Control", "SCA1", "SCA2", "SCA6", "FRDA"))
+```
+
+## Proportion of junctions by category {.tabset}
+
+### Level 3 (Diagnosis) {.tabset -}
+
+#### All genes {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for all junctions found within the studied genes."}
+plotJunctionCategories(annot_junc_prop_red_df, level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### ATXN1 {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the ATXN1 gene."}
+plotJunctionCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN1"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### ATXN2 {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the ATXN2 gene."}
+plotJunctionCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN2"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### ATXN7 {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the ATXN7 gene."}
+plotJunctionCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN7"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### CACNA1A {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the CACNA1A gene."}
+plotJunctionCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "CACNA1A"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+#### FXN {-}
+
+```{r, fig.height=5.5, fig.width=7.2, fig.cap="Proportion of junctions by Diagnosis and tissue. Results presented for junctions located in the FXN gene."}
+plotJunctionCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "FXN"), 
+                       level = "Diagnosis", split_tissue = T, ref_group = "Control")
+```
+
+## Proportion of counts by category {.tabset}
+
+### Level 3 (Diagnosis) {.tabset -}
+
+#### All genes {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located within all studied genes and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df, level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located within all studied genes and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df, level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### ATXN1 {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN1 gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN1"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN1 gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN1"), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### ATXN2 {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN2 gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN2"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN2 gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN2"), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### ATXN7 {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN7 gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN7"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the ATXN7 gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "ATXN7"),
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### CACNA1A {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the CACNA1A gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "CACNA1A"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the CACNA1A gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "CACNA1A"), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
+
+#### FXN {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the FXN gene and from samples extracted in the Cerebellum brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "FXN"), 
+                            level = "Diagnosis", tissue = "Cerebellum", ref_group = "Control")
+```
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by disease status. Results presented for junctions located in the FXN gene and from samples extracted in the Frontal Cortex brain region."}
+plotJunctionCountCategories(annot_junc_prop_red_df %>% dplyr::filter(gene_name == "FXN",), 
+                            level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
+```
