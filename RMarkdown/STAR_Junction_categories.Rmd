@@ -512,10 +512,6 @@ plotJunctionCountCategories(annot_junc_prop_red_df %>%
                             level = "Diagnosis", tissue = "Frontal", ref_group = "Control")
 ```
 
-<!-- # Comparison against Leaftcutter-defined introns -->
-
-
-
 <!-- # OLD -->
 
 <!-- ## Proportion of junction categories {.tabset} -->
