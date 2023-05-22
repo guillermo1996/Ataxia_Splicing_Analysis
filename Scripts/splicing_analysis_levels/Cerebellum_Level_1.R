@@ -33,16 +33,20 @@ options(lifecycle_verbosity = "warning")
 
 ## Source helper functions
 source(here::here("R/hf_project_analysis.R"))
+source(here::here("R/hf_graph_and_themes.R"))
+source(here::here("R/hf_subsample.R"))
 
 ## Relevant Paths
 if(!exists("results_path")) results_path <- here::here("results/")
-project_path <- file.path(results_path, "Cerebellum_Level1/")
+project_path <- file.path(results_path, "Cerebellum_Level_1/")
 
 dir.create(project_path, showWarnings = F, recursive = T)
 
 ## Script parameters
 level = "Type"
 clusters = c("Case", "Control")
+
+doParallel::registerDoParallel(4)
 
 ## Load the initial information
 if(!exists("metadata")){
@@ -55,4 +59,30 @@ if(!exists("metadata")){
     extractReadDepthMultiQC(multiqc_path)   # Add total reads information from MultiQC
 }
 
-metadata_project <- metadata %>% filter(Region == "Cerebellum")
+# Metadata & clustering ----
+metadata_project <- metadata %>% 
+  dplyr::filter(Region == "Cerebellum") %>%
+  dplyr::filter(!(Type == "Control" & RIN >= 7))
+
+## Subsample using Gower distance ----
+metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_project,
+                                             level = level,
+                                             clusters = clusters)
+
+output_figure = paste0(project_path, "metadata_distributions.png")
+plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
+
+# Calculation of the Mis-splicing ratio ----
+projectAnalysis(metadata_project = metadata_subsample,
+                project_path = project_path,
+                level = level,
+                clusters = clusters,
+                rw_disk = T,
+                overwrite = T)
+
+# Wilcox paired signed-rank test ----
+logger::log_info("\t Loading the common introns.")
+common_introns <- getCommonIntrons(project_path)
+
+logger::log_info("\t Executing the Wilcoxon paired signed-rank test.")
+wilcox_test <- MSRanalysis(common_introns, project_path, clusters = c("Case", "Control"))

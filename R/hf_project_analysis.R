@@ -67,3 +67,72 @@ projectAnalysis <- function(metadata_project,
        cluster_distances_raw, cluster_distances_pruned, cluster_distances_tidy, cluster_distances_tidy_all)
   })
 }
+
+getCommonIntrons <- function(project_path, prune = T, overwrite = F, output_file = "common_introns.rds"){
+  if(file.exists(paste0(project_path, output_file)) & !overwrite){
+    common_introns <- readRDS(paste0(project_path, output_file))
+    return(common_introns)
+  }
+  
+  intron_files <- list.files(project_path, pattern = "_db_introns.rds$")
+  global_introns <- foreach(i = seq_along(intron_files)) %do%{
+    cluster_file <- intron_files[i]
+    cluster_name <- stringr::str_split_fixed(cluster_file, "_", 2)[1]
+    cluster_introns <- readRDS(paste0(project_path, cluster_file)) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(cluster = cluster_name)
+    
+    return(cluster_introns)
+  } %>% dplyr::bind_rows()
+  
+  if(prune){
+    global_introns <- global_introns %>%
+      dplyr::select(ref_junID, ref_type, MSR_Donor, MSR_Acceptor, ref_reads, ref_ss5score, ref_ss3score, cluster)
+  }
+  
+  common_introns <- global_introns %>%
+    dplyr::group_by(ref_junID) %>%
+    dplyr::filter(n() == length(intron_files)) %>%
+    dplyr::ungroup()
+  
+  if(output_file != ""){
+    common_introns %>% saveRDS(paste0(project_path, output_file))
+  }
+  
+  return(common_introns)
+}
+
+MSRanalysis <- function(common_introns, project_path, clusters, splice_sites = c("Donor", "Acceptor"), overwrite = F, output_file = "wilcox_test_MSR.rds"){
+  if(file.exists(paste0(project_path, output_file)) & !overwrite){
+    wilcox_test_MSR <- readRDS(paste0(project_path, output_file))
+    return(wilcox_test_MSR)
+  }
+  
+  wilcox_test_MSR <- foreach(i = seq(splice_sites), .packages = "tidyverse") %dopar%{
+    splice_site <- splice_sites[i]
+    
+    MSR_Table <- common_introns %>%
+      dplyr::select(ref_junID, MSR_Donor, MSR_Acceptor, cluster) %>%
+      tidyr::pivot_wider(id_cols = ref_junID, names_from = c("cluster"), values_from = c(paste0("MSR_", splice_site)))
+    
+    MSR_clusterA <- MSR_Table %>% arrange(ref_junID) %>% pull(clusters[1])
+    MSR_clusterB <- MSR_Table %>% arrange(ref_junID) %>% pull(clusters[2])
+    
+    wilcox_test <- coin::wilcoxsign_test(MSR_clusterA ~ MSR_clusterB, paired = TRUE)
+    wilcox_coin_pvalue <- show(wilcox_test)$p.value %>% as.numeric()
+    wilcox_Z <- wilcox_test@statistic@teststatistic
+    wilcox_effsize <- wilcox_Z/sqrt(length(MSR_clusterA))
+    wilcox_magnitude <- rstatix:::get_wilcox_effsize_magnitude(wilcox_effsize)
+    
+    tibble(splice_site = splice_site,
+           p.value = wilcox_coin_pvalue,
+           effect_size = wilcox_effsize,
+           magnitude = wilcox_magnitude)
+  } %>% dplyr::bind_rows()
+  
+  if(output_file != ""){
+    wilcox_test_MSR %>% saveRDS(paste0(project_path, output_file))
+  }
+  
+  return(wilcox_test_MSR)
+}

@@ -13,7 +13,8 @@ extractReadDepthMultiQC <- function(metadata, multiqc_path){
     dplyr::left_join(multi %>% 
                        dplyr::select(Sample, total_reads) %>%
                        dplyr::mutate(Sample = gsub("merged_", "", Sample)),
-                     by = c("sample_name" = "Sample"))
+                     by = c("sample_name" = "Sample")) %>%
+    dplyr::ungroup()
   
   return(metadata_reads)
 }
