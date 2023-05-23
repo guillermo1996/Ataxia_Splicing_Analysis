@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - Leafcutter junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.0
+  affiliation: UCL - Version 1.1
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
