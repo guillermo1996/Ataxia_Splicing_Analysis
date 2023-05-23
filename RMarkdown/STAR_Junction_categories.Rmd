@@ -32,9 +32,12 @@ shhh(library(tidyverse))
 shhh(library(foreach))
 shhh(library(doParallel))
 
+main_path <- file.path("/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/")
+
 ## Load helper functions
-source(here::here("R/STAR_introns.R"))
-source(here::here("R/hf_graph_and_themes.R"))
+source(file.path(main_path, "R/STAR_introns.R"))
+source(file.path(main_path, "R/hf_graph_and_themes.R"))
+source(file.path(main_path, "R/hf_additional.R"))
 
 ## Set options
 options(dplyr.summarise.inform = FALSE)
@@ -100,14 +103,14 @@ Three different studies will be presented: disease status (Level 1), ataxia subt
 
 ```{r, echo = T}
 # Paths
-metadata_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/metadata/metadata.csv"
-multiqc_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/metadata/multiqc_rseqc_read_distribution.txt"
-sj_tab_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/samples/SJ_out_tab_files/"
+metadata_path <- file.path(main_path, "metadata/metadata.csv")
+multiqc_path <- file.path(main_path, "metadata/multiqc_rseqc_read_distribution.txt")
+sj_tab_path <- file.path(main_path, "samples/SJ_out_tab_files/")
 
 # Path to the gtf file to annotate the introns and the ENCODE blacklisted region
-#gtf_ensembl_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
-gtf_gencode_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf"
-blacklist_path = "/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed"
+#gtf_ensembl_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf")
+gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf")
+blacklist_path = file.path("/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed")
 
 # Load the metadata
 metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>% 
@@ -147,7 +150,7 @@ The main difference is that only junctions from chromosomes 1:22, X and Y are co
 Given that the annotation process is long, we only create the variable if it does not exists in disk.
 
 ```{r, echo = T}
-rse_jx_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/variables/rse_jx_gencode43.rds"
+rse_jx_path <- file.path(main_path, "variables/rse_jx_gencode43.rds")
 if(!file.exists(rse_jx_path)){
   rse_jx <- createRSE(sj_df, gtf_gencode_path, sample_info = metadata, sample_id_col = "Correct_sample")
   rse_jx %>% saveRDS(rse_jx_path)
@@ -240,10 +243,12 @@ First, we plot the category percentages by sample. We employ the function `plotJ
 #'   column that will split the graph and the Wilcoxon tests. For the Ataxia
 #'   RNAseq data, only "Type", "AtaxiaSubtype" and "Diagnosis" are valid inputs.
 #' @param split_tissue boolean, whether to split the graph in facets by tissue.
+#' @param ref_group character vector, category in the \code{level} field that
+#'   will be compare against for the Wilcoxon signed-rank test.
 #'
 #' @return
 #' @export
-plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
+plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, ref_group = NULL){
   p <- ggplot(annot_junc_prop_df,
               aes(x = type, y = prop_junc, fill = !!sym(level))) +
     geom_boxplot() +
@@ -251,7 +256,7 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
     labs(x = "", y = "Proportion of junctions") +
     scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
     ggpubr::geom_pwc(aes(group = !!sym(level)), label = " p = {p.adj.format}", p.adjust.method = "bonferroni", 
-                     p.adjust.by = "group", vjust = -0.5, hide.ns = T) +
+                     p.adjust.by = "group", vjust = -0.5, hide.ns = T, ref.group = ref_group) +
     custom_gg_theme
   if(split_tissue){
     p <- p + 

@@ -24,18 +24,20 @@ always_allow_html: true
 
 ```{r setup, include = F}
 ## Load libraries
-shhh <- suppressPackageStartupMessages
-shhh(library(here))
-shhh(library(SummarizedExperiment))
-shhh(library(ggsci))
-shhh(library(tidyverse))
-shhh(library(foreach))
-shhh(library(doParallel))
+library(here)
+library(SummarizedExperiment)
+library(ggsci)
+library(tidyverse)
+library(foreach)
+library(doParallel)
+
+main_path <- file.path("/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/")
 
 ## Load helper functions
-source(here::here("R/STAR_introns.R"))
-source(here::here("R/hf_graph_and_themes.R"))
-source(here::here("R/hf_junction_annotation.R"))
+source(file.path(main_path, "R/STAR_introns.R"))
+source(file.path(main_path, "R/hf_graph_and_themes.R"))
+source(file.path(main_path, "R/hf_junction_annotation.R"))
+source(file.path(main_path, "R/hf_additional.R"))
 
 ## Set options
 options(dplyr.summarise.inform = FALSE)
@@ -104,20 +106,20 @@ Based on the analysis for STAR annotated introns, this report is focused on five
 ataxia_genes <- c("FXN", "ATXN1", "ATXN2", "ATXN7", "CACNA1A")
 
 # Paths
-metadata_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/metadata/metadata.csv"
-multiqc_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/metadata/multiqc_rseqc_read_distribution.txt"
+metadata_path <- file.path(main_path, "metadata/metadata.csv")
+multiqc_path <- file.path(main_path, "metadata/multiqc_rseqc_read_distribution.txt")
 
-path_to_bam_files <- "/home/grocamora/RytenLab-Research/11-Ataxia_bulk/Zhongbo_Script/all_filtered_BAM/"
-path_to_junc_files <- "/home/grocamora/RytenLab-Research/11-Ataxia_bulk/Zhongbo_Script/all_filtered_JUNC/"
+path_to_bam_files <- file.path("/home/grocamora/RytenLab-Research/11-Ataxia_bulk/Zhongbo_Script/all_filtered_BAM/")
+path_to_junc_files <- file.path("/home/grocamora/RytenLab-Research/11-Ataxia_bulk/Zhongbo_Script/all_filtered_JUNC/")
 
 # Require software paths
-samtools_path <- "/home/grocamora/tools/samtools/bin/"
-regtools_path <- "/home/grocamora/tools/regtools/build/"
+samtools_path <- file.path("/home/grocamora/tools/samtools/bin/")
+regtools_path <- file.path("/home/grocamora/tools/regtools/build/")
 
 # Path to the gtf file to annotate the introns and the ENCODE blacklisted region
-gtf_ensembl_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
-gtf_gencode_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf"
-blacklist_path = "/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed"
+gtf_ensembl_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf")
+gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf")
+blacklist_path = file.path("/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed")
 
 ## Load the metadata
 metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>% 
@@ -245,7 +247,7 @@ Additionally, all junctions associated to more than one gene are removed as they
 
 ```{r, echo = T}
 # The annotation process takes some time, so execute only if the output is not found on disk.
-gene_specific_annotated_path <-  "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/variables/gene_specific_annotated.rds"
+gene_specific_annotated_path <- file.path(main_path, "variables/gene_specific_annotated.rds")
 
 if(!file.exists(gene_specific_annotated_path)){
   # Convert the junctions to GR object

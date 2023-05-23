@@ -28,8 +28,11 @@ library(here)
 library(tidyverse)
 library(foreach)
 
+main_path <- file.path("/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/")
+
 ## Load helper functions
-source("/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/R/Leafcutter_introns.R")
+source(file.path(main_path, "R/Leafcutter_introns.R"))
+source(file.path(main_path, "R/hf_graph_and_themes.R"))
 
 ## Set options
 options(dplyr.summarise.inform = FALSE)
@@ -71,62 +74,6 @@ body{
 }
 </style>')
 
-## ggplot themes
-custom_gg_theme <- theme(
-  plot.title = element_text(size = 11, face = "bold"),
-  panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = 1),
-  axis.text.x = ggplot2::element_text(color = "black", size = 8, angle = 90, hjust = 1),
-  axis.text.y = ggplot2::element_text(color = "black", size = 8),
-  axis.title.x = ggplot2::element_text(face = "bold", size = 11, margin = margin(5, 0, 0, 0)),
-  axis.title.y = ggplot2::element_text(face = "bold", size = 11, margin = margin(0, 10, 0, 0)),
-  panel.grid.minor = element_line(color = "#444444", linewidth = 0.05, linetype = 2),
-  panel.grid.major.y = element_line(color = "#444444", linewidth = 0.05, linetype = 2),
-  panel.grid.major.x = element_line(color = "#444444", linewidth = 0.1),
-  panel.background = element_rect(fill = "#FBFBFB"),
-  legend.title = element_text(size = 12),
-  legend.text = element_text(size = 10),
-  legend.position = "top",
-  legend.key = element_rect(color = "black", linewidth = 0.01),
-  legend.key.size = unit(1, "lines"),
-  strip.text.x = element_text(color = "black", face = "bold", size = 8),
-  strip.background = element_rect(color = "black", linewidth = 1, linetype = "solid"),
-  strip.text.y = element_text(color = "black", face = "bold", size = 8),
-  plot.margin = margin(0.5, 0.5, 0.2, 0.5, "cm")
-)
-
-custom_gg_theme_subtitle <- custom_gg_theme +
-  theme(
-    plot.subtitle = element_text(size = 12, vjust = 1, color = "black", margin = margin(b = -20, t = -5)),
-    plot.title = element_text(size = 15, face = "bold"),
-    legend.margin = margin(b = -5),
-    legend.justification = "right",
-    legend.title = element_text(size = 11),
-    legend.text = element_text(size = 10)
-  )
-```
-
-# Background
-> Aim: update the studies carried out by Regina H. Reynolds about introns' annotation distributions. Source material: [Leafcutter: intron annotation and visualisation](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html)
-
-This report is meant to be used as a template. As such, the different sections will include instructions on how to modify the graphic outputs and not descriptions about the results themselves.
-
-To run this script, it is necessary to source the file at `/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/R/Leafcutter_introns.R` with needed helper functions.
-
-# Annotate introns
-
-First, we need to specify some variables to use across the RMarkdown. 
-
-The visualizations expressed here employ ENSEMBL v105 for annotations (modify the path to the gtf in the variable `gtf_path`). I tested with GENCODE v43, but the annotation process did not properly work (I assume it must be due to a different start/end position, but haven't have time to check).
-
-```{r, echo = T}
-# Since the cluster IDs don't have a valid strand, we set this argument to FALSE
-# to ignore the strands
-use_strand <- F
-
-# Path to the gtf file to annotate the introns
-gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
-#gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf"
-
 # Dictionary to rename the comparisons in the plot
 intron_type_labels <- c("annotated" = "Annotated", "novel_donor" = "Novel Donor", 
                         "novel_acceptor" = "Novel Acceptor", 
@@ -137,12 +84,36 @@ intron_type_levels <- c("annotated", "novel_acceptor", "novel_donor",
                         "novel_exon_skip", "novel_combo", "unannotated")
 ```
 
-## Loading leafcutter results
+# Background
+> Aim: update the studies carried out by Regina H. Reynolds about introns' annotation distributions. Original source material: [Leafcutter: intron annotation and visualisation](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html)
 
-Then, we load the leafcutter results from disk. Three different studies will be presented in this report: overall (Level 1), subtypes (Level 2) and diagnoses (Level 3). Types 2 and 3 will be further split by tissues.
+This report is meant to be used as a template. As such, the different sections will include instructions on how to modify the graphic outputs and not descriptions about the results themselves.
+
+To run this script, it is necessary to source the file at `/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/R/Leafcutter_introns.R` with needed helper functions.
+
+# Annotate introns
+
+To annotate the junctions, we need to set the following variables:
+
+* `use_strand`: whether to use the strand information for the Leafcutter clusters' ID.
+
+* `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v43 is employed (also tested with ENSEMBL v105).
 
 ```{r, echo = T}
-path_to_results <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/summary_results"
+# For the Ataxia dataset, the cluster IDs don't have a valid strand. Set to FALSE.
+use_strand <- F
+
+# Path to the gtf file to annotate the introns
+#gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
+gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf"
+```
+
+## Loading leafcutter results
+
+Next, the leafcutter results are loaded from disk. Three different studies will be presented in this report: overall (Level 1), subtypes (Level 2) and diagnoses (Level 3). Types 2 and 3 will be further split by tissues.
+
+```{r, echo = T}
+path_to_results <- file.path(main_path, "summary_results/")
 leafcutter_list <-  setNames(list(
   readRDS(file.path(path_to_results, "case_v_control_leafcutter_ds.Rds")),
   readRDS(file.path(path_to_results, "subtypes_v_control_leafcutter_ds.Rds")),
@@ -154,11 +125,9 @@ leafcutter_list <-  setNames(list(
 
 The junctions are annotated using the function `junction_annot` from David Zhang's package [`dasper`](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) version 1.7.0. 
 
-It takes around 20 minutes to execute the annotation process of all three levels.
-
 ```{r, echo = T}
 # Path to where the annotated intron list will be stored in disk.
-annotated_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/variables/annotated_gencode43.rds"
+annotated_path <- file.path(main_path, "variables/annotated_gencode43.rds")
 
 # If file already exists, do not execute the annotation process.
 if(!file.exists(annotated_path)){
@@ -186,7 +155,7 @@ if(!file.exists(annotated_path)){
     
     # Once the introns are annotated, we remove all the annotated introns that
     # are associated to more than one gene.
-    annotated_introns <- removeAmbiguousGenes(annotated_introns)
+    annotated_introns <- removeAmbiguousGenesLeafcutter(annotated_introns)
     
     return(annotated_introns)
   })
@@ -200,7 +169,7 @@ if(!file.exists(annotated_path)){
 
 ## Proportion of annotated introns {.tabset}
 
-We use the function `printTypeTable` to print a table with the proportion of significant junctions by category. Results are not split by tissue. The significant column denotes the number of introns by annotation type that were found significantly differentially spliced. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#annotating-introns).
+We use the function `printTypeTable` to print a table with the proportion of significant junctions by category. Results by tissue are shown when expanded below the main table. The significant column denotes the number of introns by annotation type that were found significantly differentially spliced. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#annotating-introns).
 
 ```{r, echo = T}
 #' Prints the proportion of significant junctions by type
@@ -215,9 +184,10 @@ We use the function `printTypeTable` to print a table with the proportion of sig
 #' @param level index or name of the specific study in both the "annotated" and "leafcutter_list" arguments.
 #' @param use_strand boolean to specify whether to use the strand in the clusters' ID.
 #' @param deltapsi_filter boolean to specify whether to use a deltaPSI filter of |dPSI| >= 0.1
+#' @param tissue character vector, if provided, the comparisons employed must contain the keyword.
 #'
 #' @export
-printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, deltapsi_filter = F){
+printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, deltapsi_filter = F, tissue = NULL){
   # Extract the significant comparisons and clusters
   significant_clusters <- leafcutter_list[[level]]$significant_clusters_0.05_filter %>%
     dplyr::mutate(cluster_id = str_c(chr, ":", cluster)) %>% 
@@ -228,6 +198,14 @@ printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, de
   # Conver the annotated GRanges object to a tibble.
   annotated_df <- annotated[[level]] %>%
     tibble::as_tibble()
+  
+  # If a tissue is provided, filter the comparisons to contain the input tissue.
+  if(!is.null(tissue)){
+    significant_clusters <- significant_clusters %>%
+      dplyr::filter(grepl(tissue, comparison))
+    annotated_df <- annotated_df %>%
+      dplyr::filter(grepl(tissue, comparison))
+  }
   
   # Extract the number of junctions by type that are significant.
   significant_counts <- annotated_df %>%
@@ -257,11 +235,43 @@ printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, de
 printTypeTable(annotated, leafcutter_list, level = "overall", use_strand = use_strand)
 ```
 
+<details><summary>Information by tissue</summary>
+
+Cerebellum:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "overall", use_strand = use_strand, tissue = "Cerebellum")
+```
+
+Frontal Cortex:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "overall", use_strand = use_strand, tissue = "Frontal")
+```
+
+</details>
+
 #### Stringent {-}
 
 ```{r}
 printTypeTable(annotated, leafcutter_list, level = "overall", use_strand = use_strand, deltapsi_filter = T)
 ```
+
+<details><summary>Information by tissue</summary>
+
+Cerebellum:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "overall", use_strand = use_strand, deltapsi_filter = T, tissue = "Cerebellum")
+```
+
+Frontal Cortex:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "overall", use_strand = use_strand, deltapsi_filter = T, tissue = "Frontal")
+```
+
+</details>
 
 ### Level 2 (AtaxiaSubtype) {.tabset -}
 
@@ -271,11 +281,43 @@ printTypeTable(annotated, leafcutter_list, level = "overall", use_strand = use_s
 printTypeTable(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand)
 ```
 
+<details><summary>Information by tissue</summary>
+
+Cerebellum:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand, tissue = "Cerebellum")
+```
+
+Frontal Cortex:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand, tissue = "Frontal")
+```
+
+</details>
+
 #### Stringent {-}
 
 ```{r}
 printTypeTable(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand, deltapsi_filter = T)
 ```
+
+<details><summary>Information by tissue</summary>
+
+Cerebellum:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand, deltapsi_filter = T, tissue = "Cerebellum")
+```
+
+Frontal Cortex:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand, deltapsi_filter = T, tissue = "Frontal")
+```
+
+</details>
 
 ### Level 3 (Diagnosis) {.tabset -}
 
@@ -285,11 +327,43 @@ printTypeTable(annotated, leafcutter_list, level = "subtypes", use_strand = use_
 printTypeTable(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand)
 ```
 
+<details><summary>Information by tissue</summary>
+
+Cerebellum:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand, tissue = "Cerebellum")
+```
+
+Frontal Cortex:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand, tissue = "Frontal")
+```
+
+</details>
+
 #### Stringent {-}
 
 ```{r}
 printTypeTable(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand, deltapsi_filter = T)
 ```
+
+<details><summary>Information by tissue</summary>
+
+Cerebellum:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand, deltapsi_filter = T, tissue = "Cerebellum")
+```
+
+Frontal Cortex:
+
+```{r}
+printTypeTable(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand, deltapsi_filter = T, tissue = "Frontal")
+```
+
+</details>
 
 # Visualization of overlapping events
 
@@ -297,7 +371,7 @@ Different visualizations will be presented replicating Regina's results, but ada
 
 ## Proportion of annotation types within each comparison {.tabset}
 
-Visualization of the proportion of junction categories by comparison and tissue. We use the function `plotProportionOfAnnotation` with the parameters explained next. Relevant to notice the addition of the `tissue` parameter that can split the comparisons by keywords in their name (e.g. if we specify `Cerebellum` in the tissue parameter, only comparison that include the keyword `Cerebellum` will be considered). [Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#number-of-overlapping-introns)
+Visualization of the proportion of junction categories by comparison and tissue. We use the function `plotProportionOfAnnotation` with the parameters explained next. Relevant to notice the addition of the `tissue` parameter that can split the comparisons by keywords in their name (e.g. if we specify `Cerebellum` in the tissue parameter, only comparison that include the keyword `Cerebellum` will be considered). [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#number-of-overlapping-introns)
 
 ```{r, echo = T}
 #' Plots the proportion of junction categories
@@ -355,13 +429,18 @@ plotProportionOfAnnotation <- function(annotated, leafcutter_list, level, use_st
                     #comparison = comparison_labels[comparison],
                     comparison = as_factor(comparison)) %>% 
       ggplot(aes(x = comparison, y = prop, fill = type), colour = "black") +
-      geom_col(color = "black") +
+      geom_col(color = "black", width= 0.6) +
+      # ggrepel::geom_text_repel(aes(label = paste0(round(prop, 2)*100, "%"), x = comparison, group = type), 
+      #                          position = ggpp::position_stacknudge(x = 0.4, direction = "split"),
+      #                          size = 3.5) +
+      # ggrepel::geom_text_repel(aes(label = round(prop, 2), x = comparison, group = type), direction = "x", force= 10) +
       labs(x = "", y = "Proportion") +
       scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
-      scale_x_discrete(expand = expansion(add = 0.7)) + 
+      scale_x_discrete(expand = expansion(add = 0.5)) + 
       scale_fill_manual(name = "Acceptor/donor annotation", 
                         values = rev(c("#3C5488", "#E64B35", "#00A087", "#4DBBD5", "#7E6148", "grey"))) +
       custom_gg_theme + 
+      theme(axis.text.x = ggplot2::element_text(color = "black", size = 8, angle = 90, hjust = 0.5)) +
       guides(fill = guide_legend(reverse = T))
   }
   
@@ -384,13 +463,13 @@ plotProportionOfAnnotation(annotated, leafcutter_list, level = "overall", use_st
 
 #### Cerebellum {-}
 
-```{r, fig.height=6.5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Cerebellum tissue."}
+```{r, fig.height=5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Cerebellum tissue."}
 plotProportionOfAnnotation(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand, tissue = "Cerebellum")
 ```
 
 #### Frontal Cortex {-}
 
-```{r, fig.height=6.5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Frontal Cortex tissue."}
+```{r, fig.height=5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Frontal Cortex tissue."}
 plotProportionOfAnnotation(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand, tissue = "Frontal")
 ```
 
@@ -398,19 +477,19 @@ plotProportionOfAnnotation(annotated, leafcutter_list, level = "subtypes", use_s
 
 #### Cerebellum {-}
 
-```{r, fig.height=6.5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Cerebellum tissue."}
+```{r, fig.height=5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Cerebellum tissue."}
 plotProportionOfAnnotation(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand, tissue = "Cerebellum")
 ```
 
 #### Frontal Cortex {-}
 
-```{r, fig.height=6.5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Frontal Cortex tissue."}
+```{r, fig.height=5, fig.width=8, fig.cap="Proportion of (a) all successfully tested introns and (b) the subset of differentially spliced introns coloured by annotation type. Results only for Frontal Cortex tissue."}
 plotProportionOfAnnotation(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand, tissue = "Frontal")
 ```
 
 ## Number of overlapping introns {.tabset}
 
-In the following plots, we measure the number of differentially spliced introns across overlaps. We use the function `plotNumberOverlappingIntrons`, with the same arguments as before. [Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#number-of-overlapping-introns)
+In the following plots, we measure the number of differentially spliced introns across overlaps. We use the function `plotNumberOverlappingIntrons`, with the same arguments as before. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#number-of-overlapping-introns)
 
 ```{r, echo = T}
 #' Plot the number of overlapping significant junctions
@@ -498,7 +577,7 @@ plotNumberOverlappingIntrons(annotated, leafcutter_list, level = "diagnoses", us
 
 ## Distribution of annotation types across comparisons {.tabset}
 
-We can also plot by comparisons the proportion of the number of overlapping introns. [Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#distribution-of-annotation-types-across-comparisons).
+We can also plot by comparisons the proportion of the number of overlapping introns. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#distribution-of-annotation-types-across-comparisons).
 
 ```{r, echo = T}
 #' Plot the proportion of overlapping significant junctions by comparison
@@ -594,7 +673,7 @@ plotDistributionAnnotatedTypes(annotated, leafcutter_list, level = "diagnoses", 
 
 ## Proportion of clusters containing only annotated introns {.tabset}
 
-Lastly, we also represent the proportion of significant cluster in which all the introns are annotated introns. [Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#proportion-of-clusters-containing-only-annotated-introns)
+Lastly, we also represent the proportion of significant cluster in which all the introns are annotated introns. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#proportion-of-clusters-containing-only-annotated-introns)
 
 ```{r, echo = T}
 #' Plot the proportion significant clusters containing only annotated introns
@@ -643,6 +722,8 @@ plotDistributionOnlyAnnotatedTypes <- function(annotated, leafcutter_list, level
     dplyr::mutate(comparison = as_factor(comparison)) %>% 
     ggplot(aes(x = comparison, y = prop, fill = introns_all_annotated)) +
     geom_col(color = "black") +
+    geom_text(aes(label = paste0(round(prop, 2)*100, "%")), position = position_stack(vjust = 0.5), 
+              size = 4, color = "black") +
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
     scale_fill_manual(name = "All introns annotated", 
                       values = c("#E64B35", "#3C5488")) +
@@ -655,18 +736,19 @@ plotDistributionOnlyAnnotatedTypes <- function(annotated, leafcutter_list, level
 ### Level 1 (Type) {-}
 
 ```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of differentially spliced clusters containing introns that are all fully annotated."}
-plotDistributionOnlyAnnotatedTypes(annotated, leafcutter_list, level = "overall", use_strand = use_strand) + 
-  theme(axis.text.x = ggplot2::element_text(color = "black", size = 8, angle = 0, hjust = 0.5))
+plotDistributionOnlyAnnotatedTypes(annotated, leafcutter_list, level = "overall", use_strand = use_strand)
 ```
 
 ### Level 2 (AtaxiaSubtype) {-}
 
-```{r, fig.height=8, fig.width=7.2, fig.cap="Proportion of differentially spliced clusters containing introns that are all fully annotated."}
-plotDistributionOnlyAnnotatedTypes(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand)
+```{r, fig.height=6.5, fig.width=7.2, fig.cap="Proportion of differentially spliced clusters containing introns that are all fully annotated."}
+plotDistributionOnlyAnnotatedTypes(annotated, leafcutter_list, level = "subtypes", use_strand = use_strand) +
+  theme(axis.text.x = ggplot2::element_text(color = "black", size = 8, angle = 90, hjust = 0.5))
 ```
 
 ### Level 3 (Diagnosis) {-}
 
-```{r, fig.height=7, fig.width=7.2, fig.cap="Proportion of differentially spliced clusters containing introns that are all fully annotated."}
-plotDistributionOnlyAnnotatedTypes(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand)
+```{r, fig.height=6.5, fig.width=7.2, fig.cap="Proportion of differentially spliced clusters containing introns that are all fully annotated."}
+plotDistributionOnlyAnnotatedTypes(annotated, leafcutter_list, level = "diagnoses", use_strand = use_strand) +
+  theme(axis.text.x = ggplot2::element_text(color = "black", size = 8, angle = 90, hjust = 0.5))
 ```

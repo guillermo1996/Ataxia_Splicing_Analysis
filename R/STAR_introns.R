@@ -55,21 +55,8 @@ loadSJ <- function(metadata, sj_tab_path){
   return(sj_df)
 }
 
-# referenceWithCHR <- function(TxDb_ref){
-#   seqnames_ref <- intronsByTranscript(TxDb_ref) %>% 
-#     unlist() %>% 
-#     GenomicRanges::seqnames() %>%
-#     unique()
-#   
-#   chr_prop <- sum(grepl("chr", seqnames_ref))/length(seqnames_ref)
-#   if(chr_prop > 0.5){
-#     return(T)
-#   }else{
-#     return(F)
-#   }
-# }
 
-#' Convert output of STAR junction aligment to a RangedSummarisedExperiment
+#' Convert output of STAR junction alignment to a RangedSummarisedExperiment
 #' class
 #'
 #' Source:
@@ -163,23 +150,6 @@ createRSE <- function(sj_df, gtf_path, sample_info, sample_id_col){
   return(rse_jx)
 }
 
-#' Loads the ENCODE blacklisted regions into memory
-#'
-#' The different versions can be downloaded
-#' \href{https://github.com/Boyle-Lab/Blacklist/tree/master/lists}{here}.
-#'
-#' @param blacklist_path path to the ENCODE blacklisted regions .bed file.
-#'
-#' @return the ENCODE blacklisted region in GRanges object.
-#' @export
-loadEncodeBlacklist <- function(blacklist_path) {
-  if(!exists("encode_blacklist_hg38")){
-    encode_blacklist_hg38 <<- rtracklayer::import(blacklist_path) %>% diffloop::rmchr()
-  }
-  
-  return(encode_blacklist_hg38)
-}
-
 #' Remove the junctions from the ENCODE blacklisted regions
 #'
 #' @param rse_jx RangedSummarisedExperiment, output of \code{createRSE}.
@@ -242,10 +212,12 @@ removeAmbiguousGenesRSE <- function(rse_jx) {
 #'   column that will split the graph and the Wilcoxon tests. For the Ataxia
 #'   RNAseq data, only "Type", "AtaxiaSubtype" and "Diagnosis" are valid inputs.
 #' @param split_tissue boolean, whether to split the graph in facets by tissue.
+#' @param ref_group character vector, category in the \code{level} field that
+#'   will be compare against for the Wilcoxon signed-rank test.
 #'
 #' @return
 #' @export
-plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
+plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, ref_group = NULL){
   p <- ggplot(annot_junc_prop_df,
               aes(x = type, y = prop_junc, fill = !!sym(level))) +
     geom_boxplot() +
@@ -253,7 +225,7 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F){
     labs(x = "", y = "Proportion of junctions") +
     scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
     ggpubr::geom_pwc(aes(group = !!sym(level)), label = " p = {p.adj.format}", p.adjust.method = "bonferroni", 
-                     p.adjust.by = "group", vjust = -0.5, hide.ns = T) +
+                     p.adjust.by = "group", vjust = -0.5, hide.ns = T, ref.group = ref_group) +
     custom_gg_theme
   if(split_tissue){
     p <- p + 

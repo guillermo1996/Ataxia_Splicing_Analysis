@@ -102,9 +102,9 @@ convert_leafcutter <- function(leafcutter_results, use_strand = F){
 #' @param input_SR_details Tibble (or data.frame) object with the relevant
 #'   junctions.
 #'
-#' @return Junctions assigned to only one gene.
+#' @return Junctions assigned to one or less genes.
 #' @export
-removeAmbiguousGenes <- function(input_SR_details){
+removeAmbiguousGenesLeafcutter <- function(input_SR_details){
   output_SR_details <- input_SR_details[which(sapply(input_SR_details$gene_id_junction, length) < 2), ]
   
   return(output_SR_details)
