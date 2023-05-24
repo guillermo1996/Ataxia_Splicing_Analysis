@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - STAR junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.1
+  affiliation: UCL - Version 1.2
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -119,6 +119,14 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
   dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1"))) %>%
   extractReadDepthMultiQC(multiqc_path)
 ```
+
+## Changelog {.tabset -}
+
+### v1.2 {-}
+
+* Added back graphs by brain tissue.
+
+* Fixed wrong data being represented in section 4.1 - Level 1 (Type).
 
 # Pipeline
 
@@ -252,7 +260,7 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, 
   p <- ggplot(annot_junc_prop_df,
               aes(x = type, y = prop_junc, fill = !!sym(level))) +
     geom_boxplot() +
-    scale_y_continuous(expand = expansion(mult = c(0.01, 0.15))) +
+    scale_y_continuous(expand = expansion(mult = c(0.01, 0.15)), limits = c(0, NA)) +
     labs(x = "", y = "Proportion of junctions") +
     scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
     ggpubr::geom_pwc(aes(group = !!sym(level)), label = " p = {p.adj.format}", p.adjust.method = "bonferroni", 
@@ -266,6 +274,12 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, 
   
   return(p)
 }
+```
+
+### Region {-}
+
+```{r, fig.height=4, fig.width=7.2, fig.cap="Proportion of junctions by brain tissue."}
+plotJunctionCategories(annot_junc_prop_df, level = "Region", split_tissue = F)
 ```
 
 ### Level 1 (Type) {-}
@@ -313,7 +327,7 @@ plotJunctionCountCategories <- function(annot_junc_prop_df, level, tissue = NULL
   
   p <- ggplot(annot_junc_prop_df, aes(x = !!sym(level), y = prop_count, fill = !!sym(level))) +
     geom_boxplot() +
-    scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) +
+    scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)), limits = c(0, NA)) +
     labs(x = "", y = "Proportion of junctions") +
     scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
     facet_wrap(vars(type), ncol = 3, scales = "free") +
@@ -331,6 +345,12 @@ plotJunctionCountCategories <- function(annot_junc_prop_df, level, tissue = NULL
 }
 ```
 
+### Region {-}
+
+```{r, fig.height=5, fig.width=9, fig.cap="Proportion of counts by brain tissue."}
+plotJunctionCountCategories(annot_junc_prop_df, level = "Region") + 
+  custom_gg_theme + theme(legend.justification = "center")
+```
 
 ### Level 1 (Type) {.tabset -}
 
@@ -423,10 +443,16 @@ annot_junc_prop_red_df <- annot_junc_red_df %>%
 
 ## Proportion of junctions by category {.tabset}
 
+### Region {-}
+
+```{r, fig.height=3.5, fig.width=7.2, fig.cap="Proportion of junctions by brain tissue."}
+plotJunctionCategories(annot_junc_prop_red_df, level = "Region", split_tissue = F)
+```
+
 ### Level 1 (Type) {-}
 
 ```{r, fig.height=5, fig.width=7.2, fig.cap="Proportion of junctions by disease status and brain tissue."}
-plotJunctionCategories(annot_junc_prop_df, level = "Type", split_tissue = T)
+plotJunctionCategories(annot_junc_prop_red_df, level = "Type", split_tissue = T)
 ```
 
 ### Level 2 (AtaxiaSubtype) {-}
@@ -444,6 +470,13 @@ plotJunctionCategories(annot_junc_prop_red_df %>%
 ```
 
 ## Proportion of counts by category {.tabset}
+
+### Region {-}
+
+```{r, fig.height=3, fig.width=9, fig.cap="Proportion of counts by brain tissue."}
+plotJunctionCountCategories(annot_junc_prop_red_df, level = "Region") + 
+  custom_gg_theme + theme(legend.justification = "center")
+```
 
 ### Level 1 (Type) {.tabset -}
 

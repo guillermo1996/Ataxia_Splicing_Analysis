@@ -221,7 +221,7 @@ plotJunctionCategories <- function(annot_junc_prop_df, level, split_tissue = F, 
   p <- ggplot(annot_junc_prop_df,
               aes(x = type, y = prop_junc, fill = !!sym(level))) +
     geom_boxplot() +
-    scale_y_continuous(expand = expansion(mult = c(0.01, 0.15))) +
+    scale_y_continuous(expand = expansion(mult = c(0.01, 0.15)), limits = c(0, NA)) +
     labs(x = "", y = "Proportion of junctions") +
     scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
     ggpubr::geom_pwc(aes(group = !!sym(level)), label = " p = {p.adj.format}", p.adjust.method = "bonferroni", 
@@ -255,7 +255,7 @@ plotJunctionCountCategories <- function(annot_junc_prop_df, level, tissue = NULL
   
   p <- ggplot(annot_junc_prop_df, aes(x = !!sym(level), y = prop_count, fill = !!sym(level))) +
     geom_boxplot() +
-    scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) +
+    scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)), limits = c(0, NA)) +
     labs(x = "", y = "Proportion of junctions") +
     scale_fill_manual(values = pal_jco("default", alpha = 0.9)(10)[c(1, 9)]) +
     facet_wrap(vars(type), ncol = 3, scales = "free") +
