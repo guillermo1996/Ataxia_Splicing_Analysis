@@ -1,0 +1,945 @@
+---
+title: "Ataxia RNAseq - Distances, deltaMES and MSR distribution Analysis"
+author: 
+- name: "Guillermo Rocamora Pérez"
+  affiliation: UCL - Version 2.0
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  bookdown::html_document2:
+    figure_caption: yes
+    code_folding: show
+    theme: paper
+    highlight: haddock
+    df_print: paged
+    toc: true
+    toc depth: 3
+    toc_float: true
+    number_sections: true
+  md_document:
+    variant: markdown_github
+    toc: true
+    number_sections: true
+always_allow_html: true
+bibliography: references.bib
+link-citations: true
+notes-after-punctuation: false
+csl: https://raw.githubusercontent.com/citation-style-language/styles/master/dependent/jhep-reports.csl
+---
+
+```{r setup, include = F}
+## Load libraries
+library(here)
+library(tidyverse)
+library(foreach)
+library(doParallel)
+
+## Load helper functions
+source(here::here("R/hf_graph_and_themes.R"))
+source(here::here("R/hf_subsample.R"))
+source(here::here("R/hf_additional.R"))
+
+## Set options
+options(dplyr.summarise.inform = FALSE)
+options(lifecycle_verbosity = "warning")
+knitr::opts_chunk$set(echo = F, warning = F, message = F, out.width="85%", fig.align = "center", dpi = 150)
+```
+
+```{r load-theme, echo = F, results = "asis"}
+## Custom sciRmdTheme with increased width.
+## Please ask guillermorocamora@gmail.com for more details.
+sciRmdTheme::set.theme(
+  theme = "default",
+  color = NULL,
+  header.sticky = FALSE,
+  list.group.icon = "arrow",
+  font.family = "Arial",
+  font.color = "black",
+  header.color = "darkblue"
+)
+
+## Custom styles for the output html
+cat('
+<style type="text/css">
+.dataTables_scrollHeadInner{
+  width:100% !important;
+}
+.dataTables_scrollHeadInner table{
+  width:100% !important;
+}
+/*
+.code-folding-btn {
+  display: none;
+}
+*/
+h3, .h3 {
+  font-size: 22px!important;
+}
+h4, .h4 {
+  font-size: 18px!important;
+}
+h5, .h5 {
+  font-size: 16px!important;
+}
+body{
+  font-size: 13px;
+}
+.tocify-subheader {
+    text-indent: 15px;
+    display: none;
+    font-size: 12px;
+}
+</style>')
+```
+
+# Background
+
+In this report, we will focus on studying the distances, Delta MES and MSR results of the splicing noise analysis of Ataxia RNAseq samples.
+
+In this report, we will focus on studying the results of the mis-splicing noise analysis of Ataxia RNAseq samples: 46 Cerebellum and 45 Frontal Cortex samples. Samples will be pseudobulked by tissue, status disease and ataxia diagnosis, splitting the analysis in three different levels, including the results of the splicing noise between specific Ataxia diagnosis (i.e. SCA1, FRDA...) and control samples.
+
+```{r load-metadata}
+# Paths 
+metadata_path <- here::here("metadata/metadata.csv")
+multiqc_path <- here::here("metadata/multiqc_rseqc_read_distribution.txt")
+results_path <- here::here("results/")
+
+# Studies
+tissues <- c("Cerebellum", "Frontal")
+ataxia_subtypes <- c("KnownAtaxia", "UnknownAtaxia")
+ataxia_diagnoses <- c("FRDA", "SCA1" ,"SCA2", "SCA6")
+
+# Load metadata
+metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(Individual_ID = stringr::str_split(ID_anon, "_", simplify = T)[1]) %>%
+  dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1"))) %>%
+  extractReadDepthMultiQC(multiqc_path) %>%
+  dplyr::ungroup()
+```
+
+## Changelog {.tabset -}
+
+### v2.0 {-}
+
+* Updated the clusters to always compare the same number of samples between cases and controls.
+
+* Added results for Level 2 (AtaxiaSubtype) and references.
+
+* Updated methodology.
+
+### v1.1 {-}
+
+* Updated subsampling method to consider other covariates other than RIN. Each covariate was weighted to contribute according to its influence to the number of novel junctions for each sample. For both tissues, RIN was the most relevant contributor with more than 85% of the weight. Thus, no relevant variation from the previous approach was observed. 
+
+# Methods
+
+## Analysis pipeline (splicing noise evaluation)
+
+For every available BAM file to study, we apply the following steps:
+
+1. **Download and extraction of BAM files**: the files are downloaded from `s3://ataxia-bulk-rnaseq/nextflow_first_attemp/Star_2_pass_by_indv/output/STAR/align/BAM_files/` and subfolders.
+
+2. **Junction extraction**: all junctions are extracted using [`regtools junction extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) after [sorting](http://www.htslib.org/doc/samtools-sort.html) and [indexing](http://www.htslib.org/doc/samtools-index.html) with [`samtools`](http://www.htslib.org/). A file is created for each BAM file in BED12 format.
+
+3. **Junction annotation**: the junctions are read from the previously created files and merged into a single dataframe of read junctions. We also register the number of reads of each junction in every sample. The junctions located within the ENCODE blacklisted regions v2 are removed. The `junction_annot()` function from the package [`dasper`](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) is used to annotate the junctions to the Gencode v39 reference transcriptome. All junctions not classified as either `novel_donor`, `novel_acceptor` or `annotated` are ignored. We also remove all junctions smaller than 25bp (base pairs) and annotated introns that are ambiguously assigned to more than one gene.
+
+4. **Junction pairing**: by looking for overlaps between the `novel` junctions and the `annotated` junctions for each sample, we measure the distance in bp between the novel and reference splice site. The annotated introns that are never associated to a novel junction are considered a `never misspliced junctions`.
+
+5. **Filtering the distances**: we remove the pairings in which a novel junctions are associated to more than one reference intron across different samples. For more information about this process, please see the *methods* section in *Introverse* paper [@GarcaRuiz2023].
+
+Next, we need to decide on a clustering method to combine and compare different samples. More information in section about [clustering](#clustering).
+
+6. **Measuring the mis-splicing ratio**: by adding all novel junction read counts attached to an annotated intron across all samples in which the novel splice was observed, and then dividing by the total number of reads of the annotated intron and the novel junctions across the same set of samples, we obtain a measurement of the mis-splicing ratio for an given annotated intron at both the donor splice site and the acceptor splice site. For more information about the mis-splicing ratio, please see section [MSR](#MSR).
+
+7. **Generation of the DB**: two tables are created per each cluster: `db_introns` and `db_novel`. Each one contains the relevant information related to reference introns (including the never misspliced introns) and novel junctions. This includes the [MaxEntScan](http://hollywood.mit.edu/burgelab/maxent/Xmaxentscan_scoreseq.html) scores, the percentage of protein-coding transcripts and the classification in `u2` and `u12` introns. 
+
+## Clustering (pseudobulk) {#clustering}
+
+In our dataset, we have a total of 95 samples, corresponding to 48 different individuals. A total of 4 samples are removed because they belong to individuals diagnosed as `CANVAS` and `AIFM1`. 
+
+Three different level of studies were studied in this report, and always different analyses for each tissue.
+
+* Level 1 (Type): whether the sample is diagnosed with ataxia or not (diases status). For the frontal cortex tissue, samples with $RIN<4$ will be removed, while for the Cerebellum tissue only controls with $RIN<=7$ are kept. This is to ensure non-significant differences in the RIN medians.
+
+* Level 2 (AtaxiaSubtype): two different analyses are performed: known ataxia cases vs. controls and unknown ataxia cases vs. controls. In both scenarios, no restrictions about RIN is required.
+
+* Level 3 (Diagnosis): a different analysis was performed for every ataxia diagnosis with at least three samples: FRDA, SCA1, SCA2 and SCA6. In all situations, control samples are selected to minimize a weighted Gower distance to the case samples (more information in following section).
+
+## Subsampling
+
+Studies about the relationship in mis-splicing ratio's median and the number of samples pseudobulked showed a clear correlation between the two. In order to avoid this effect in the comparisons between cases and controls, we decided to subsample the majority class until both classes have the same number of samples. The subsampling was performed so that the weighted Gower distance between the case samples and the control samples was minimized.
+
+For datasets with both quantitative (i.e. RIN) and categorical (i.e. Brain bank) variables, also called mixed datasets, Gower's distance is a common measurement of similarity between any two samples [@Hummel2017]. The similarity between samples can be defined as:
+
+$$
+S_{ij}=\frac{\sum_{k=1}^p s_{ijk}\delta_{ijk}w_k}{\sum_{k=1}^p \delta_{ijk}w_k}
+$$
+where $p$ are the variables beeing compared, $i$ and $j$ refers to two different samples and:
+
+* **Quantitative variables:** $s_{ijk}=1-|x_{ik}-x_{jk}|/R_k$ where $R_k$ is the range of the variable $k$.
+* **Categorical variables:** $s_{ijk}=1$ if $x_{ik}=x_{jk}$ and $s_{ijk}=0$ otherwise.
+* $\delta_{ijk}$: whether a comparison between sample $i$ and sample $j$ can be performed for variable $k$.
+* $w_k$: optional weight to increase or decrease the relevance of certain variables.
+
+We decided to apply a weighting to the variables in order to increase the relevance of the main contributors to the number of junction reads across samples.
+
+The subsampling process was the following:
+
+1. *Variable weights*: first, we divided the samples by tissue. Then, for each sample, we extract the number of reads associated to both annotated and novel junctions. Using a linear model to predict this number of reads, we measure the variance explained by each of the main covariates that will be employed  in subsampling: RIN, PMI, Age at death, Brain bank and sex. The percentage of variance explained by each covariate will be considered as the weight in the next step.
+
+2. *Gower's distance between samples*: for each the minority class sample, the most similar majority class sample was selected without repetition (i.e. once two samples were assigned together, none of them can be selected again). Thus, the same number of samples between the two classes were obtained.
+
+3. *Wilcoxon test*: between the two sets of samples, a Wilcoxon test is executed to test whether there are significant differences in the RIN medians. If significant differences are found, some extra restriction is applied to any of the sets. For example, for Cerebellum Level 1 study, control samples with RIN higher than 7 needed to be removed to ensure non-significant differences in the median. 
+
+The obtained weights are the following:
+
+```{r}
+variance_cerebellum_df <- metadata %>% 
+  dplyr::filter(Region == "Cerebellum") %>%
+  getVarianceDf(results_path = results_path,
+                output_file = here::here("variables/variance_explained_cerebellum.rds"))
+variance_frontal_df <- metadata %>% 
+  dplyr::filter(Region == "Frontal") %>%
+  getVarianceDf(results_path = results_path,
+                output_file = here::here("variables/variance_explained_frontal.rds"))
+
+variance_cerebellum_df %>%
+  dplyr::select(Predictor, Weight_Cerebellum = Variance_explained) %>%
+  dplyr::left_join(variance_frontal_df %>% select(Predictor, Weight_Frontal = Variance_explained),
+                   by = "Predictor") %>%
+  `colnames<-`(c("Covariate", "Cerebellum weights", "Frontal Cortex weights")) %>%
+  dplyr::mutate(Covariate = c("RIN", "PMI", "Brain Bank", "Age at death", "Sex"),
+                across(where(is.numeric), ~ round(., 3))) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16)
+```
+
+## Common annotated introns
+
+For each study, we will only consider the common annotated introns between the two classes. To do so, we generate the following dataframes:
+
+* **Common annotated intron table**: we looped through both `db_introns` tables and extracted only the information from the common annotated introns in the clusters. To identify common annotated introns, we used their locus (i.e. seqname:start-end:strand), since it is a unique identifier. The goal is to have the same number of annotated between cases and controls.
+
+* **Common novel junction table**: we looped through both `db_novel` tables and extracted only the information from the novel junctions associated to common annotated introns. Thus, we first needed to calculate the common annotated intron table.
+
+# Studied metrics {.tabset}
+
+The examples in this section corresponds to the Level 1 study for Cerebellum.
+
+```{r load-example}
+common_novel <- readRDS(here::here("results/Cerebellum_Level_1/common_novel.rds"))
+common_introns <- readRDS(here::here("results/Cerebellum_Level_1/common_introns.rds"))
+tissue <- "Cerebellum"
+```
+
+## Distances {-}
+
+The distances graph is generated by counting the number of unique novel junctions at any given distance of the reference splicing site. From the list of novel junctions associated to common reference introns, we group by `novel_type` and `cluster`, count the number of entries for each distance within 30 bp into both intron and exon sequence, and represent the data in a histogram. An example of the data can be seen in the following table:
+
+```{r distance-example-table, echo = F}
+set.seed(0)
+common_novel %>% 
+  dplyr::filter(abs(distance) < 100) %>%
+  dplyr::sample_n(10) %>%
+  dplyr::mutate(sequence = ifelse(distance < 0, "intron", "exon"),
+                modulo = abs(distance) %% 3) %>%
+  dplyr::select(novel_junID,
+                novel_type, cluster, sequence, distance) %>%
+  `colnames<-`(c("Novel jun. ID", "Novel type", "Cluster", "Sequence", "Distance [bp]")) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16)
+```
+
+For each study, different graphical representations will be presented. First, we present a histogram of the different distance values between -30 and 30 bp, with the case bars stacked on top of the control bars:
+
+```{r distance-example-1, echo = FALSE, fig.width=7.2, fig.height=5.5}
+limit_bp = 30
+ggplot(common_novel %>% 
+         dplyr::filter(abs(distance) <= limit_bp) %>%
+         dplyr::group_by(distance, cluster, novel_type) %>% dplyr::count()) + 
+  geom_bar(aes(x = distance, y = n, fill = cluster), stat="identity", 
+           position = "stack", color = "black", linewidth = 0.1, width = 1) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0)),
+                     breaks = seq(-limit_bp, limit_bp, length.out = 7)) + 
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") + 
+  labs(x = "Distance", y = "Number of unique novel junctions") + 
+  ggtitle(paste0("Distance to the annotated intron"),
+          subtitle = paste0("Tissue: ", tissue)) + 
+  ggforce::facet_col(vars(novel_type), labeller = labeller(novel_type = novel_labels)) + 
+  custom_gg_theme_subtitle + theme(panel.spacing.x = unit(1, "lines"))
+```
+
+However, this representation does not allow for an easy comparison between cases and controls because of the bar stacking. To do so, we split the graph in two more facets to represent each cluster by its own:
+
+```{r distance-example-2, echo = FALSE, fig.width=7.2, fig.height=4}
+limit_bp = 30
+ggplot(common_novel %>%
+         dplyr::filter(abs(distance) <= limit_bp) %>%
+         dplyr::group_by(distance, cluster, novel_type) %>% dplyr::count()) + 
+  geom_bar(aes(x = distance, y = n, fill = cluster), stat="identity", 
+           position = "stack", color = "black", linewidth = 0.1, width = 1) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0)), breaks = seq(-limit_bp, limit_bp, length.out = 7)) + 
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") + 
+  labs(x = "Distance", y = "Number of unique novel junctions") + 
+  ggtitle(paste0("Distance to the annotated intron"), subtitle = paste0("Tissue: ", tissue)) + 
+  facet_grid(novel_type ~ cluster, scales = "free_y", labeller = labeller(novel_type = novel_labels)) + 
+  custom_gg_theme_subtitle + theme(panel.spacing.x = unit(1, "lines"))
+```
+
+If we focus on the difference in the number of unique novel junctions between cases and controls, the last graph represent the histogram resulting from subtracting the control distances from the case distances:
+
+```{r distance-example-3, echo = FALSE, warning=F, fig.width=7.2, fig.height=5.5}
+limit_bp = 30
+common_novel %>%
+  dplyr::filter(abs(distance) <= limit_bp) %>%
+  dplyr::group_by(distance, novel_type, cluster) %>%
+  dplyr::count() %>%
+  tidyr::pivot_wider(id_cols = c("novel_type", "distance"), names_from = "cluster", values_from = "n") %>%
+  dplyr::mutate(Case = replace_na(Case, 0),
+                Control = replace_na(Control, 0)) %>%
+  dplyr::mutate(diff = Case - Control) %>%
+  ggplot() +
+  geom_bar(aes(x = distance, y = diff, fill = "fill_color"), stat="identity", 
+           position = "stack", color = "black", linewidth = 0.2, width = 1) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0)), 
+                     breaks = seq(-limit_bp, limit_bp, length.out = 7)) + 
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  scale_fill_manual(name = "", values = c("fill_color" = "#4394fd"),
+                    labels = c("Case - Control"),
+                    guide = guide_legend(override.aes = list(linewidth = .25))) +
+  labs(x = "Distance", y = "Number of unique novel junctions") + 
+  ggtitle(paste0("Distance difference to the annotated intron"),
+          subtitle = paste0("Tissue: ", tissue)) + 
+  ggforce::facet_col(vars(novel_type), labeller = labeller(novel_type = novel_labels)) +
+  custom_gg_theme_subtitle
+```
+
+## Distances (modulo 3) {- #metric_dist_mod3}
+
+To generate the modulo 3 graphs, we first filter by those distances smaller than 100 bp in either direction. Then, we group by `novel_type` and `cluster`, and calculate the distance in modulo 3 (i.e. the remainder from the division of the distance by 3). Once we have all novel junctions split in the four different categories with their distances in modulo 3, we calculate the percentage that each modulo 3 represents in each category. Thus, for each category:
+
+$$
+\text{mod.0 }\% = \frac{\# 0}{\#0 + \#1 + \#2}*100\%\qquad\quad \text{mod.1 }\% = \frac{\# 1}{\#0 + \#1 + \#2}*100\%\qquad\quad \text{mod.2 }\% = \frac{\# 2}{\#0 + \#1 + \#2}*100\%
+$$
+
+Here, $\#X$ represents the number of novel junctions at a modulo 3 distance equal to $X$. For example, from the information of the following table, we can focus on the `Case acceptor` group, where we observe two 0s, two 1s and one 2:
+
+```{r modulo3-example-table, echo = F}
+set.seed(0)
+modulo_table <- common_novel %>% 
+  dplyr::filter(abs(distance) < 100) %>%
+  sample_n(10) %>%
+  dplyr::mutate(sequence = ifelse(distance < 0, "intron", "exon"),
+                modulo = abs(distance) %% 3) %>%
+  dplyr::select(novel_junID,
+                novel_type, cluster, sequence, distance, modulo) %>%
+  group_by(novel_type, cluster) %>%
+  mutate(group_name = paste(cluster, str_split_fixed(novel_type, "_", 2)[1, 2])) %>%
+  arrange(group_name) %>%
+  `colnames<-`(c("Novel jun. ID", "Novel type", "Cluster", "Sequence", "Distance [bp]", "Mod3 distance [bp]", "group_name"))
+
+modulo_table %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16) %>%
+  kableExtra::remove_column(7) %>%
+  kableExtra::pack_rows(index = table(modulo_table$group_name)) 
+```
+
+Thus, the calculated percentage are:
+
+$$
+\text{mod.0 }\% = 40\%\qquad\quad \text{mod.1 }\% = 40\%\qquad\quad \text{mod.2 }\% = 20\%
+$$
+
+Additionally, we can further group the novel junctions by their intron/exon sequence, resulting a total of 8 categories, where the same calculation of percentages can be applied:
+
+```{r modulo3-example-table-2, echo = F}
+set.seed(0)
+modulo_table <- common_novel %>% 
+  dplyr::filter(abs(distance) < 100) %>%
+  sample_n(10) %>%
+  dplyr::mutate(sequence = ifelse(distance < 0, "intron", "exon"),
+                modulo = abs(distance) %% 3) %>%
+  dplyr::select(novel_junID,
+                novel_type, cluster, sequence, distance, modulo) %>%
+  group_by(novel_type, cluster) %>%
+  mutate(group_name = paste(cluster, str_split_fixed(novel_type, "_", 2)[1, 2], sequence)) %>%
+  arrange(group_name) %>%
+  `colnames<-`(c("Novel jun. ID", "Novel type", "Cluster", "Sequence", "Distance [bp]", "Mod3 distance [bp]", "group_name"))
+
+modulo_table %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16) %>%
+  kableExtra::remove_column(7) %>%
+  kableExtra::pack_rows(index = table(modulo_table$group_name)) 
+```
+
+With the previous tables in mind, we represent them in three different ways. The first one just represents the number of unique novel junctions for each modulo 3 distance where $abs(distance) <= 100$.
+
+```{r modulo3-example-1, echo = FALSE, fig.width=7.2, fig.height=5.5}
+limit_bp = 30
+
+modulo_df <- common_novel %>%
+  dplyr::filter(abs(distance) <= 100) %>%
+  tidyr::separate(novel_type, c("novel", "novel_type")) %>%
+  dplyr::mutate(modulo = abs(distance) %% 3,
+                sequence = ifelse(distance < 0, "intron", "exon"),
+                novel_type = factor(novel_type, levels = c("acceptor", "donor"))) %>%
+  dplyr::select(cluster, novel_type, sequence, distance, modulo)
+
+ggplot(modulo_df) +
+  geom_bar(aes(x = modulo, fill = cluster), stat = "count", position = "dodge", color = "black", linewidth = 0.5) +
+  ggrepel::geom_text_repel(aes(x = modulo, label = after_stat(count), group = cluster), stat = "count",
+                           size = 4.2, color = "white", bg.color = "black", bg.r = .1, fontface = "bold",
+                           vjust = 1.5, position = position_dodge(width = 0.9), force = 5) +
+  scale_x_continuous(limits = c(-0.5, 2.5), breaks = c(0, 1, 2), expand = c(0, 0)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") +
+  labs(x = "Modulo 3 of the distance", y = "Number of unique novel junctions") + 
+  ggtitle(paste0("Mod.3 distance to the annotated intron"), subtitle = paste0("Tissue: ", tissue)) + 
+  ggforce::facet_col(vars(novel_type), labeller = labeller(novel_type = novel_mini_labels)) +
+  custom_gg_theme_subtitle + theme(legend.key = element_rect(color = "black", linewidth = 0.10))
+```
+
+We also represent the percentage that each that each distance in modulo 3 represents when grouped by `novel_type` (i.e. acceptor/donor) and `cluster` (i.e. case/control).
+
+```{r modulo3-example-2, echo = FALSE, fig.width=7.2, fig.height=5.5}
+limit_bp = 30
+
+modulo_group_df <- modulo_df %>%
+  dplyr::group_by(cluster, novel_type, modulo) %>% 
+  dplyr::summarise(n = n()) %>%
+  dplyr::mutate(freq = (n / sum(n) * 100))
+
+ggplot(modulo_group_df) +
+  geom_bar(aes(x = modulo, y = freq, fill = cluster), stat = "identity", position = "dodge", color = "black", linewidth = 0.5) +
+  ggrepel::geom_text_repel(aes(x = modulo, y = freq, label = paste0(round(freq, 1), " %"), group = cluster),
+                           size = 4.2, color = "white", bg.color = "black", bg.r = .1, fontface = "bold",
+                           vjust = 1.5, position = position_dodge(width = 0.9), force = 5) +
+  scale_x_continuous(limits = c(-0.5, 2.5), breaks = c(0, 1, 2), expand = c(0, 0)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") +
+  labs(x = "Modulo 3 of the distance", y = "Percentage of novel junctions") + 
+  ggtitle(paste0("Mod.3 Percentages: Cluster and Splice site"), subtitle = paste0("Tissue: ", tissue)) + 
+  ggforce::facet_col(vars(novel_type), labeller = labeller(novel_type = novel_mini_labels)) +
+  custom_gg_theme_subtitle + theme(legend.key = element_rect(color = "black", linewidth = 0.10))
+```
+
+Lastly, we represent the same data as before but taking into consideration whether it is located in the intronic or exonic sequence:
+
+```{r modulo3-example-3, echo = FALSE, fig.width=7.2, fig.height=3}
+limit_bp = 30
+
+modulo_group_sequence_df <- modulo_df %>%
+  dplyr::mutate(sequence_type = paste(novel_type, sequence)) %>%
+  dplyr::group_by(cluster, sequence_type, modulo) %>% 
+  dplyr::summarise(n = n()) %>%
+  dplyr::mutate(freq = (n / sum(n) * 100)) %>%
+  dplyr::arrange(desc(sequence_type)) %>%
+  dplyr::mutate(sequence_type = factor(sequence_type, levels = .$sequence_type %>% unique))
+
+ggplot(modulo_group_sequence_df) +
+  geom_bar(aes(x = modulo, y = freq, fill = cluster), stat = "identity", position = "dodge", color = "black", linewidth = 0.3) +
+  scale_x_continuous(breaks = c(0, 1, 2), expand = c(0, 0.2)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+  viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") +
+  labs(x = "Modulo 3 of the distance", y = "Percentage of novel junctions") + 
+  ggtitle(paste0("Mod.3 Percentages: Cluster, Splice site and Sequence"), subtitle = paste0("Tissue: ", tissue)) + 
+  ggforce::facet_row(vars(sequence_type), labeller = labeller(sequence_type = sequence_labels)) +
+  custom_gg_theme_subtitle + 
+  theme(legend.key = element_rect(color = "black", linewidth = 0.10),
+        axis.title.y = element_text(size = 9),
+        plot.title = element_text(size = 13))
+```
+
+## Delta MaxEntScan Score {-}
+
+To represent the difference in MaxEntScan scores (MES), we subtract the MaxEntScan score of the annotated intron to the MaxEntScan score of a novel junction at each splice site. We obtain a table like the following, and represent the density plot of the different values for `delta_ss5score` and `delta_ss3score`:
+
+$$
+\text{Delta MES}^{5'} = \text{MES}_{ref}^{5'}-\text{MES}_{novel}^{5'}\qquad\qquad\text{Delta MES}^{3'} = \text{MES}_{ref}^{3'}-\text{MES}_{novel}^{3'}
+$$
+
+Example table with the Delta MES data:
+
+```{r MES-example-table, echo = F}
+set.seed(0)
+common_novel %>%
+  dplyr::sample_n(10) %>%
+  dplyr::select(novel_junID, ref_junID, delta_ss5score, delta_ss3score) %>%
+  `colnames<-`(c("Novel jun. ID", "Ref. jun. ID",
+                 "Delta ss5score", "Delta ss3score")) %>%
+  dplyr::mutate(across(where(is.numeric), ~ round(., 2))) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16) %>%
+  kableExtra::column_spec(c(3), border_left = T, border_right = F)
+```
+
+As for the visual representations, the difference between the MaxEntScan scores for each splice site is shown in the X-axis. The Y-axis represents the kernel density estimate (smoothed version of a histogram). The fill color represents cases vs. controls.
+
+```{r delta-MES-example-1, echo=FALSE, message=F, warning = F, fig.height=4.5, fig.width=7.2}
+delta_MES <- common_novel %>%
+  tidyr::pivot_longer(c(delta_ss5score, delta_ss3score), names_to = "delta_type", values_to = "delta") %>%
+  dplyr::filter(delta != 0) %>%
+  dplyr::mutate(delta_type = ifelse(delta_type == "delta_ss5score", "delta MES 5'ss", "delta MES 3'ss")) %>%
+  dplyr::mutate(delta_type = delta_type %>% as.factor()) %>%
+  dplyr::mutate(delta_type = relevel(delta_type, ref = "delta MES 5'ss"))
+
+
+ggplot(delta_MES) +
+  geom_density(aes(x = delta, fill = cluster), alpha = 0.6, linewidth = 0.3, adjust = 1) +
+  geom_vline(xintercept = 0) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") +
+  labs(x = "Delta MaxEntScan score", y = "Density") +
+  ggtitle(paste0("Delta MaxEntScan scores"), subtitle = paste0("Tissue: ", tissue)) +
+  ggforce::facet_col(vars(delta_type), labeller = labeller(delta_type = delta_MES_labels)) +
+  custom_gg_theme_subtitle + theme(legend.key = element_rect(color = "black", linewidth = .05))
+```
+
+Additionally, we can also represent the difference in the kernel density estimate between case and control:
+
+```{r delta-MES-example-2, echo=FALSE, message=F, warning = F, fig.height=4.5, fig.width=7.2}
+densities_5 <- delta_MES %>%
+  dplyr::filter(delta_type == "delta MES 5'ss") %>%
+  dplyr::group_by(cluster, delta_type) %>%
+  dplyr::summarise(d = list(density(delta, from = min(.$delta), to = max(.$delta))))
+densities_3 <- delta_MES %>%
+  dplyr::filter(delta_type == "delta MES 3'ss") %>%
+  dplyr::group_by(cluster, delta_type) %>%
+  dplyr::summarise(d = list(density(delta, from = min(.$delta), to = max(.$delta))))
+
+delta_5 <- tibble::tibble(x = densities_5$d[[1]]$x,
+                          y = densities_5$d[[1]]$y - densities_5$d[[2]]$y)
+delta_3 <- tibble::tibble(x = densities_3$d[[1]]$x,
+                          y = densities_3$d[[1]]$y - densities_3$d[[2]]$y)
+delta_df <- rbind(delta_5 %>% dplyr::mutate(delta_type = "delta MES 5'ss"),
+                  delta_3 %>% dplyr::mutate(delta_type = "delta MES 3'ss")) %>%
+  dplyr::arrange(desc(delta_type)) %>%
+  dplyr::mutate(delta_type = factor(delta_type, levels = c("delta MES 5'ss", "delta MES 3'ss")))
+
+ggplot(delta_df) +
+  geom_area(aes(x = x, y = y, fill = "fill_color"), position = "identity") +
+  scale_fill_manual(name = "", values = c("fill_color" = "#619cff"), labels = c("Case - Control"),
+                    guide = guide_legend(override.aes = list(linewidth = .25))) +
+  geom_line(aes(x = x, y = y)) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  labs(x = "Delta MaxEntScan score", y = "Density") +
+  ggtitle(paste0("Delta MaxEntScan scores"), subtitle = paste0("Tissue: ", tissue)) +
+  ggforce::facet_col(vars(delta_type), labeller = labeller(delta_type = delta_MES_labels)) +
+  custom_gg_theme_subtitle + theme(legend.key = element_rect(color = "black", linewidth = 0.75))
+```
+
+## MSR {-}
+
+The Mis-Splicing Ratio (MSR) is calculated in the data-analysis pipeline for each annotated intron found in the project samples. More information about the mis-splicing ratio can be found in the *Ataxia RNAseq Pseudobulk - Median MSR Analaysis* report. To visualize this data, we represent the density plot for MSR at the different splice sites (i.e. donor or acceptor). Example table with the MSR data:
+
+```{r MSR-example-table, echo = F}
+set.seed(0)
+common_introns %>%
+  dplyr::sample_n(10) %>%
+  dplyr::select(ref_junID, cluster, ref_type, MSR_Donor, MSR_Acceptor) %>%
+  dplyr::mutate(across(where(is.numeric), ~round(., 3))) %>%
+  `colnames<-`(c("Ref. jun, ID", "Cluster", "Ref. type", "MSR Donor", "MSR Acceptor")) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16)
+```
+
+We represent both the distribution of mis-splicing ratio (MSR) at the donor site and the acceptor site. The X-axis represents the MSR, while the Y-axis represents the kernel density estimate.
+
+```{r MSR-helper-functions, echo = F}
+## Required library "scales"
+suppressWarnings(suppressMessages(library(scales)))
+
+plotMSR_2breaks <- function(MSR_df, MSR_site, MSR_density_max, title){
+  ## Additional functions required for the plot
+  round_any = function(x, accuracy, f = round){ f(x/accuracy) * accuracy }
+  
+  add_y_break <- function(plot, yval, n = 5) {
+    p2 <- ggplot_build(plot)
+    breaks <- p2$layout$panel_params[[1]]$y$breaks
+    breaks <- breaks[!is.na(breaks)]
+    
+    plot +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.05)), 
+                         breaks = round(sort(c(breaks, seq(0, yval, length.out = n)))))
+  }
+  
+  ## Generate plot
+  p <- ggplot(MSR_df) + 
+    geom_density(aes(x = !!sym(MSR_site), fill = cluster), alpha = 0.5, adjust = 1) +
+    viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") +
+    coord_trans(x = magnify_trans(intercept = 0.05, reducer = 50),
+                y = magnify_trans(intercept = round_any(min(MSR_density_max), 100, f = ceiling), 
+                                  reducer = 2*(max(MSR_density_max)-min(MSR_density_max))/min(MSR_density_max))) +
+    geom_vline(xintercept = 0.05, linetype = 2, linewidth = 1) + 
+    geom_hline(yintercept = round_any(min(MSR_density_max), 100, f = ceiling), linetype = 2, linewidth = 1) + 
+    scale_x_continuous(breaks = c(0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.2, 0.4, 0.6, 0.8, 1.0), 
+                       expand = expansion(mult = c(0.0, 0.02)), limits = c(0, 1)) +
+    labs(x = paste0("Mis-splicing ratio (", MSR_site, ")"), y = "Density") + 
+    ggtitle(paste0("Mis-splicing ratio at ", title, " site"), subtitle = paste0("Tissue: ", tissue)) + 
+    custom_gg_theme_subtitle + theme(legend.key = element_rect(color = "black", linewidth = .05))
+  
+  ## Add Y-Axis discontinuity
+  add_y_break(p, round_any(min(MSR_density_max), 100, f = ceiling))
+}
+
+plotMSR_1break <- function(MSR_df, MSR_site, title){
+  ggplot(MSR_df) + 
+    geom_density(aes(x = !!sym(MSR_site), fill = cluster), alpha = 0.5, adjust = 1) +
+    viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "") +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+    coord_trans(x = magnify_trans(intercept = 0.05, reducer = 50)) +
+    geom_vline(aes(xintercept = 0.05), linetype = 2, linewidth = 1) + 
+    scale_x_continuous(breaks = c(0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.2, 0.4, 0.6, 0.8, 1.0), 
+                       expand = expansion(mult = c(0.0, 0.02)), limits = c(0, 1)) +
+    labs(x = paste0("Mis-splicing ratio (", MSR_site, ")"), y = "Density") + 
+    ggtitle(paste0("Mis-splicing ratio at ", title, " site"), subtitle = paste0("Tissue: ", tissue)) + 
+    custom_gg_theme_subtitle + theme(legend.key = element_rect(color = "black", linewidth = .05))
+}
+
+magnify_trans <- function(intercept, reducer) {
+  trans <- function(x, i = intercept, r = reducer) {
+    sapply(x, function(x) {
+      if (x < i) x
+      else x / r + i
+    }) %>% as.numeric()
+  }
+  
+  inv <- function(x, i = intercept, r = reducer) {
+    sapply(x, function(x) {
+      if(!is.na(x)) {
+        if (x < i) x
+        else (x - i) * r
+      }
+    }) %>% as.numeric()
+  }
+  trans_new(name = 'custom',
+            transform = trans,
+            inverse = inv
+  )
+}
+```
+
+```{r MSR-example-1, echo = F, message=F, warning = F, fig.height=4.5, fig.width=7.2}
+MSR_df <- common_introns
+MSR_densities <- MSR_df %>%
+  tidyr::pivot_longer(cols = c("MSR_Donor", "MSR_Acceptor"), names_to = "MSR_type", values_to = "MSR") %>%
+  dplyr::group_by(MSR_type, cluster) %>% 
+  dplyr::summarise(d = list(density(MSR, from = min(.$MSR), to = max(.$MSR), adjust= 1))) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(max = d$y %>% max) %>%
+  dplyr::ungroup()
+
+for(MSR_site in c("MSR_Acceptor", "MSR_Donor")){
+  MSR_density_max <- MSR_densities %>% dplyr::filter(MSR_type == MSR_site) %>% dplyr::pull(max)
+  title = ifelse(MSR_site == "MSR_Donor", "donor", "acceptor")
+  
+  ## If the difference between the two maximums is too high, we plot with an axis break
+  if(max(MSR_density_max)/min(MSR_density_max) > 20){
+    plotMSR_2breaks(MSR_df, MSR_site, MSR_density_max, title) %>% print()
+  }else{
+    plotMSR_1break(MSR_df, MSR_site, title) %>% print()
+  }
+  
+  ## Add white spaces between the plots
+  if(MSR_site == "MSR_Acceptor") cat("<br><br><br>")
+}
+```
+
+Note that the distributions have a discontinuity at $x=0.05$ to better represent all possible MSR values. In some cases, a discontinuity in the Y-axis will also be present if the difference between the two sample types exceeds a predefined threshold.
+
+## Stats {-}
+
+Under the *Stats* subsection, we will study different statistics of the annotated introns and novel junctions:
+
+* **Unique annotated introns:** number of annotated introns classified as never mis-spliced, mis-spliced at acceptor end, donor end or both. It is represented by cluster, so that we can study the variation in the number and percentage of never mis-spliced annotated introns.
+
+* **Reads - annotated introns:** total reads associated to annotated introns and the percentage that they represent against the total read depth.
+
+* **Reads - novel junctions:** total reads associated to novel junctions and the percentage that they represent against the total read depth. Results are separated by cluster.
+
+# Results for Level 1 (Type)
+
+## Cerebellum {.tabset}
+
+Distribution of sample RIN for Cerebellum level 1 study:
+
+```{r, fig.height=7.2/1.5, fig.width=7.2}
+metadata %>% 
+  dplyr::filter(Region == "Cerebellum") %>%
+  dplyr::filter(!(Type == "Control" & RIN >= 7)) %>%
+  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control"), weights = variance_cerebellum_df) %>%
+  plotMetadataSubsample(level = "Type") +
+  labs(x = "Disease status")
+```
+
+
+```{r echo = FALSE, results = "asis", eval = T}
+base_level = 2
+experiment_path <- here::here("results/Cerebellum_Level_1/")
+
+common_introns <- readRDS(paste0(experiment_path, "common_introns.rds"))
+common_novel <- readRDS(paste0(experiment_path, "common_novel.rds"))
+tissue = "Cerebellum"
+
+cat(knitr::knit_child("Template.Rmd", envir = environment(), quiet = T))
+```
+
+## Frontal Cortex {.tabset}
+
+Distribution of sample RIN for Frontal Cortex level 1 study:
+
+```{r, fig.height=7.2/1.5, fig.width=7.2}
+metadata %>% 
+  dplyr::filter(Region == "Frontal") %>%
+  dplyr::filter(RIN > 4) %>%
+  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control")) %>%
+  plotMetadataSubsample(level = "Type") +
+  labs(x = "Disease status")
+```
+
+```{r echo = FALSE, results = "asis", eval = T}
+base_level = 2
+experiment_path <- here::here("results/Frontal_Level_1/")
+
+common_introns <- readRDS(paste0(experiment_path, "common_introns.rds"))
+common_novel <- readRDS(paste0(experiment_path, "common_novel.rds"))
+tissue = "Frontal"
+
+cat(knitr::knit_child("Template.Rmd", envir = environment(), quiet = T))
+```
+
+# Results for Level 2 (AtaxiaSubtype)
+
+```{r}
+tissues <- c("Cerebellum", "Frontal")
+ataxia_subtypes = c("KnownAtaxia", "UnknownAtaxia")
+all_metadata <- foreach(i = 1:2) %do%{
+  tissue = tissues[i]
+  
+  metadata_tissue <- metadata %>% 
+      dplyr::filter(Region == tissue)
+    
+  variance_df <- getVarianceDf(metadata_tissue, 
+                               results_path = here::here("results/"),
+                               output_file = here::here("variables/sample_junction_information.rds"))
+  
+  foreach(j = seq_along(ataxia_subtypes)) %do%{
+    subtype <- ataxia_subtypes[j]
+    
+    metadata_subsample <- metadata_tissue %>%
+      dplyr::filter(AtaxiaSubtype %in% c(subtype, "Control")) %>%
+      subsampleGowerDistance(level = "AtaxiaSubtype", clusters = c(subtype, "Control"), weights = variance_df) %>%
+      dplyr::mutate(study_group = subtype)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows() %>%
+  dplyr::mutate(study_group = factor(study_group, levels = c("KnownAtaxia", "UnknownAtaxia", "Control")),
+                AtaxiaSubtype = factor(AtaxiaSubtype, levels = c("Control", "KnownAtaxia", "UnknownAtaxia")))
+```
+
+## Cerebellum {.tabset}
+
+Distribution of sample RIN for Cerebellum level 2 study:
+
+```{r, fig.height=7.2/1.7, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Cerebellum"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = AtaxiaSubtype), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = F,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+```{r echo = FALSE, results = "asis", eval = T}
+project_path <- here::here("results/Cerebellum_Level_2/")
+all_sybtypes <- c("KnownAtaxia", "UnknownAtaxia")
+tissue = "Cerebellum"
+base_level = 3
+
+for(ataxia_subtype in all_sybtypes){
+  cat(paste0("### ", ataxia_subtype, " {.tabset -}"))
+  experiment_path <- file.path(project_path, ataxia_subtype)
+  
+  common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
+  common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
+    dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case"))
+
+  cat(knitr::knit_child("Template.Rmd", envir = environment(), quiet = T))
+}
+```
+
+## Frontal Cortex {.tabset}
+
+Distribution of sample RIN for Frontal Cortex level 2 study:
+
+```{r, fig.height=7.2/1.7, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Frontal"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = AtaxiaSubtype), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = F,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+```{r echo = FALSE, results = "asis", eval = T}
+project_path <- here::here("results/Frontal_Level_2/")
+all_sybtypes <- c("KnownAtaxia", "UnknownAtaxia")
+tissue = "Frontal"
+base_level = 3
+
+for(ataxia_subtype in all_sybtypes){
+  cat(paste0("### ", ataxia_subtype, " {.tabset -}"))
+  experiment_path <- file.path(project_path, ataxia_subtype)
+  
+  common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
+  common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
+    dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case"))
+
+  cat(knitr::knit_child("Template.Rmd", envir = environment(), quiet = T))
+}
+```
+
+# Results for Level 3 (Diagnosis)
+
+```{r}
+tissues <- c("Cerebellum", "Frontal")
+all_diagnosis <- c("FRDA", "SCA1", "SCA2", "SCA6")
+all_metadata <- foreach(i = 1:2) %do%{
+  tissue = tissues[i]
+  
+  metadata_tissue <- metadata %>% 
+      dplyr::filter(Region == tissue)
+    
+  variance_df <- getVarianceDf(metadata_tissue, 
+                               results_path = here::here("results/"),
+                               output_file = here::here("variables/sample_junction_information.rds"))
+  
+  foreach(j = seq_along(all_diagnosis)) %do%{
+    diagnosis <- all_diagnosis[j]
+    
+    metadata_subsample <- metadata_tissue %>%
+      dplyr::filter(Diagnosis %in% c(diagnosis, "Control")) %>%
+      subsampleGowerDistance(level = "Diagnosis", clusters = c(diagnosis, "Control"), weights = variance_df) %>%
+      dplyr::mutate(study_group = diagnosis)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows() %>%
+  dplyr::mutate(study_group = factor(study_group, levels = c("FRDA", "SCA1", "SCA2", "SCA6", "Control")),
+                Diagnosis = factor(Diagnosis, levels = c("Control", "FRDA", "SCA1", "SCA2", "SCA6")))
+```
+
+## Cerebellum {.tabset}
+
+Distribution of sample RIN for Cerebellum level 3 study:
+
+```{r, fig.height=7.2/2, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Cerebellum"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = Diagnosis), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = T,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+```{r echo = FALSE, results = "asis", eval = T}
+project_path <- here::here("results/Cerebellum_Level_3/")
+all_diagnoses <- c("FRDA", "SCA1", "SCA2", "SCA6")
+tissue = "Cerebellum"
+base_level = 3
+
+for(diagnosis in all_diagnoses){
+  cat(paste0("### ", diagnosis, " {.tabset -}"))
+  experiment_path <- file.path(project_path, diagnosis)
+  
+  common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
+  common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
+    dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case"))
+
+  cat(knitr::knit_child("Template.Rmd", envir = environment(), quiet = T))
+}
+```
+
+## Frontal Cortex {.tabset}
+
+Distribution of sample RIN for Frontal Cortex level 3 study:
+
+```{r, fig.height=7.2/2, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Frontal"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = Diagnosis), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = T,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+```{r echo = FALSE, results = "asis", eval = T}
+project_path <- here::here("results/Frontal_Level_3/")
+all_diagnoses <- c("FRDA", "SCA1", "SCA2", "SCA6")
+tissue = "Frontal"
+base_level = 3
+
+for(diagnosis in all_diagnoses){
+  cat(paste0("### ", diagnosis, " {.tabset -}"))
+  experiment_path <- file.path(project_path, diagnosis)
+  
+  common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
+  common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
+    dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case"))
+
+  cat(knitr::knit_child("Template.Rmd", envir = environment(), quiet = T))
+}
+```
+
+# Session info
+
+<details>
+  <summary>Show/hide</summary>
+
+```{r reproducibility, echo = FALSE}
+# Session info
+library("sessioninfo")
+options(width = 120)
+session_info()
+```
+
+</details> 
+
+# References
+
+<div id="refs"></div>

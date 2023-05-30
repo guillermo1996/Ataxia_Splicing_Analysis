@@ -1,0 +1,633 @@
+---
+title: "Ataxia RNAseq - Median MSR Analysis"
+author: 
+- name: "Guillermo Rocamora Pérez"
+  affiliation: UCL - Version 2.0
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  bookdown::html_document2:
+    figure_caption: yes
+    code_folding: show
+    theme: paper
+    highlight: haddock
+    df_print: paged
+    toc: true
+    toc depth: 3
+    toc_float: true
+    number_sections: true
+  md_document:
+    variant: markdown_github
+    toc: true
+    number_sections: true
+always_allow_html: true
+bibliography: references.bib
+link-citations: true
+notes-after-punctuation: false
+csl: https://raw.githubusercontent.com/citation-style-language/styles/master/dependent/jhep-reports.csl
+---
+
+```{r setup, include = F}
+## Load libraries
+library(here)
+library(tidyverse)
+library(foreach)
+library(doParallel)
+
+## Load helper functions
+source(here::here("R/hf_graph_and_themes.R"))
+source(here::here("R/hf_subsample.R"))
+source(here::here("R/hf_additional.R"))
+
+## Set options
+options(dplyr.summarise.inform = FALSE)
+options(lifecycle_verbosity = "warning")
+knitr::opts_chunk$set(echo = F, warning = F, message = F, out.width="85%", fig.align = "center", dpi = 300)
+```
+
+```{r load-theme, echo = F, results = "asis"}
+## Custom sciRmdTheme with increased width.
+## Please ask guillermorocamora@gmail.com for more details.
+sciRmdTheme::set.theme(
+  theme = "default",
+  color = NULL,
+  header.sticky = FALSE,
+  list.group.icon = "arrow",
+  font.family = "Arial",
+  font.color = "black",
+  header.color = "darkblue"
+)
+
+## Custom styles for the output html
+cat('
+<style type="text/css">
+.dataTables_scrollHeadInner{
+  width:100% !important;
+}
+.dataTables_scrollHeadInner table{
+  width:100% !important;
+}
+/*
+.code-folding-btn {
+  display: none;
+}
+*/
+h3, .h3 {
+  font-size: 22px!important;
+}
+h4, .h4 {
+  font-size: 18px!important;
+}
+h5, .h5 {
+  font-size: 16px!important;
+}
+body{
+  font-size: 13px;
+}
+.tocify-subheader {
+    text-indent: 15px;
+    display: none;
+    font-size: 12px;
+}
+</style>')
+```
+
+# Background
+
+In this report, we will focus on studying the results of the mis-splicing noise analysis of Ataxia RNAseq samples: 46 Cerebellum and 45 Frontal Cortex samples. Samples will be pseudobulked by tissue, status disease and ataxia diagnosis, splitting the analysis in three different levels, including the results of the splicing noise between specific Ataxia diagnosis (i.e. SCA1, FRDA...) and control samples.
+
+```{r load-metadata}
+# Paths 
+metadata_path <- here::here("metadata/metadata.csv")
+multiqc_path <- here::here("metadata/multiqc_rseqc_read_distribution.txt")
+results_path <- here::here("results/")
+
+# Studies
+tissues <- c("Cerebellum", "Frontal")
+ataxia_subtypes <- c("KnownAtaxia", "UnknownAtaxia")
+ataxia_diagnoses <- c("FRDA", "SCA1" ,"SCA2", "SCA6")
+
+# Load metadata
+metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(Individual_ID = stringr::str_split(ID_anon, "_", simplify = T)[1]) %>%
+  dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1"))) %>%
+  dplyr::ungroup()
+```
+
+## Changelog {.tabset -}
+
+### v2.0 {-}
+
+* Updated the clusters to always compare the same number of samples between cases and controls.
+
+* Added results for Level 2 (AtaxiaSubtype) and references.
+
+* Updated methodology.
+
+### v1.1 {-}
+
+* Updated subsampling method to consider other covariates other than RIN. Each covariate was weighted to contribute according to its influence to the number of novel junctions for each sample. For both tissues, RIN was the most relevant contributor with more than 85% of the weight. Thus, no relevant variation from the previous approach was observed. 
+
+# Methods
+
+## Analysis pipeline (splicing noise evaluation)
+
+For every available BAM file to study, we apply the following steps:
+
+1. **Download and extraction of BAM files**: the files are downloaded from `s3://ataxia-bulk-rnaseq/nextflow_first_attemp/Star_2_pass_by_indv/output/STAR/align/BAM_files/` and subfolders.
+
+2. **Junction extraction**: all junctions are extracted using [`regtools junction extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) after [sorting](http://www.htslib.org/doc/samtools-sort.html) and [indexing](http://www.htslib.org/doc/samtools-index.html) with [`samtools`](http://www.htslib.org/). A file is created for each BAM file in BED12 format.
+
+3. **Junction annotation**: the junctions are read from the previously created files and merged into a single dataframe of read junctions. We also register the number of reads of each junction in every sample. The junctions located within the ENCODE blacklisted regions v2 are removed. The `junction_annot()` function from the package [`dasper`](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) is used to annotate the junctions to the Gencode v39 reference transcriptome. All junctions not classified as either `novel_donor`, `novel_acceptor` or `annotated` are ignored. We also remove all junctions smaller than 25bp (base pairs) and annotated introns that are ambiguously assigned to more than one gene.
+
+4. **Junction pairing**: by looking for overlaps between the `novel` junctions and the `annotated` junctions for each sample, we measure the distance in bp between the novel and reference splice site. The annotated introns that are never associated to a novel junction are considered a `never misspliced junctions`.
+
+5. **Filtering the distances**: we remove the pairings in which a novel junctions are associated to more than one reference intron across different samples. For more information about this process, please see the *methods* section in *Introverse* paper [@GarcaRuiz2023].
+
+Next, we need to decide on a clustering method to combine and compare different samples. More information in section about [clustering](#clustering).
+
+6. **Measuring the mis-splicing ratio**: by adding all novel junction read counts attached to an annotated intron across all samples in which the novel splice was observed, and then dividing by the total number of reads of the annotated intron and the novel junctions across the same set of samples, we obtain a measurement of the mis-splicing ratio for an given annotated intron at both the donor splice site and the acceptor splice site. For more information about the mis-splicing ratio, please see section [MSR](#MSR).
+
+7. **Generation of the DB**: two tables are created per each cluster: `db_introns` and `db_novel`. Each one contains the relevant information related to reference introns (including the never misspliced introns) and novel junctions. This includes the [MaxEntScan](http://hollywood.mit.edu/burgelab/maxent/Xmaxentscan_scoreseq.html) scores, the percentage of protein-coding transcripts and the classification in `u2` and `u12` introns. 
+
+## Clustering (pseudobulk) {#clustering}
+
+In our dataset, we have a total of 95 samples, corresponding to 48 different individuals. A total of 4 samples are removed because they belong to individuals diagnosed as `CANVAS` and `AIFM1`. 
+
+Three different level of studies were studied in this report, and always different analyses for each tissue.
+
+* Level 1 (Type): whether the sample is diagnosed with ataxia or not (diases status). For the frontal cortex tissue, samples with $RIN<4$ will be removed, while for the Cerebellum tissue only controls with $RIN<=7$ are kept. This is to ensure non-significant differences in the RIN medians.
+
+* Level 2 (AtaxiaSubtype): two different analyses are performed: known ataxia cases vs. controls and unknown ataxia cases vs. controls. In both scenarios, no restrictions about RIN is required.
+
+* Level 3 (Diagnosis): a different analysis was performed for every ataxia diagnosis with at least three samples: FRDA, SCA1, SCA2 and SCA6. In all situations, control samples are selected to minimize a weighted Gower distance to the case samples (more information in following section).
+
+## Subsampling
+
+Studies about the relationship in mis-splicing ratio's median and the number of samples pseudobulked showed a clear correlation between the two. In order to avoid this effect in the comparisons between cases and controls, we decided to subsample the majority class until both classes have the same number of samples. The subsampling was performed so that the weighted Gower distance between the case samples and the control samples was minimized.
+
+For datasets with both quantitative (i.e. RIN) and categorical (i.e. Brain bank) variables, also called mixed datasets, Gower's distance is a common measurement of similarity between any two samples [@Hummel2017]. The similarity between samples can be defined as:
+
+$$
+S_{ij}=\frac{\sum_{k=1}^p s_{ijk}\delta_{ijk}w_k}{\sum_{k=1}^p \delta_{ijk}w_k}
+$$
+where $p$ are the variables beeing compared, $i$ and $j$ refers to two different samples and:
+
+* **Quantitative variables:** $s_{ijk}=1-|x_{ik}-x_{jk}|/R_k$ where $R_k$ is the range of the variable $k$.
+* **Categorical variables:** $s_{ijk}=1$ if $x_{ik}=x_{jk}$ and $s_{ijk}=0$ otherwise.
+* $\delta_{ijk}$: whether a comparison between sample $i$ and sample $j$ can be performed for variable $k$.
+* $w_k$: optional weight to increase or decrease the relevance of certain variables.
+
+We decided to apply a weighting to the variables in order to increase the relevance of the main contributors to the number of junction reads across samples.
+
+The subsampling process was the following:
+
+1. *Variable weights*: first, we divided the samples by tissue. Then, for each sample, we extract the number of reads associated to both annotated and novel junctions. Using a linear model to predict this number of reads, we measure the variance explained by each of the main covariates that will be employed  in subsampling: RIN, PMI, Age at death, Brain bank and sex. The percentage of variance explained by each covariate will be considered as the weight in the next step.
+
+2. *Gower's distance between samples*: for each the minority class sample, the most similar majority class sample was selected without repetition (i.e. once two samples were assigned together, none of them can be selected again). Thus, the same number of samples between the two classes were obtained.
+
+3. *Wilcoxon test*: between the two sets of samples, a Wilcoxon test is executed to test whether there are significant differences in the RIN medians. If significant differences are found, some extra restriction is applied to any of the sets. For example, for Cerebellum Level 1 study, control samples with RIN higher than 7 needed to be removed to ensure non-significant differences in the median. 
+
+All studies will be presented with the samples employed for both classes and Wilcoxon test results. The obtained weights are the following:
+
+```{r}
+variance_cerebellum_df <- metadata %>% 
+  dplyr::filter(Region == "Cerebellum") %>%
+  getVarianceDf(results_path = results_path,
+                output_file = here::here("variables/variance_explained_cerebellum.rds"))
+variance_frontal_df <- metadata %>% 
+  dplyr::filter(Region == "Frontal") %>%
+  getVarianceDf(results_path = results_path,
+                output_file = here::here("variables/variance_explained_frontal.rds"))
+
+variance_cerebellum_df %>%
+  dplyr::select(Predictor, Weight_Cerebellum = Variance_explained) %>%
+  dplyr::left_join(variance_frontal_df %>% select(Predictor, Weight_Frontal = Variance_explained),
+                   by = "Predictor") %>%
+  `colnames<-`(c("Covariate", "Cerebellum weights", "Frontal Cortex weights")) %>%
+  dplyr::mutate(Covariate = c("RIN", "PMI", "Brain Bank", "Age at death", "Sex"),
+                across(where(is.numeric), ~ round(., 3))) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16)
+```
+
+## Common annotated introns
+
+For each study, we will only consider the common annotated introns between the two classes. To do so, we generate the following dataframes:
+
+* **Common annotated intron table**: we looped through both `db_introns` tables and extracted only the information from the common annotated introns in the clusters. To identify common annotated introns, we used their locus (i.e. seqname:start-end:strand), since it is a unique identifier. The goal is to have the same number of annotated between cases and controls.
+
+* **Common novel junction table**: we looped through both `db_novel` tables and extracted only the information from the novel junctions associated to common annotated introns. Thus, we first needed to calculate the common annotated intron table.
+
+## Studied metrics - Wilcoxon paired signed-rank test
+
+```{r, eval = T}
+common_introns <- readRDS(here::here("results/Cerebellum_Level_1/common_introns.rds"))
+
+MSR_Acceptor <- common_introns %>%
+  dplyr::select(ref_junID, MSR_Donor, MSR_Acceptor, cluster) %>%
+  tidyr::pivot_wider(
+    id_cols = ref_junID,
+    names_from = c("cluster"),
+    values_from = c(paste0("MSR_Acceptor")))
+```
+
+The examples in this section corresponds to the Level 1 study for Cerebellum.
+
+For each annotated intron, two Mis-Splicing Ratios ($MSR$) are calculated to provide a measurement of the mis-splicing frequency at the donor site ($MSR_D$) and acceptor site ($MSR_A$). We first sum all of the novel donor/acceptor junction read counts and then divide by the sum of all annotated intron and novel junction read counts across the specific samples. It follows this formula:
+
+$$
+\begin{equation}
+ MSR_A = \frac{\sum_{i=1}^{N}j_i}{\sum_{i=1}^{N}j_i+\sum_{i=1}^Ns_i }
+\end{equation}
+$$
+
+where $j$ is the number of novel acceptor junction reads for a particular annotated intron, $s$ is the number of annotated intron reads and $N$ is the number of samples being studied. We can generate an $MSR$ table in which each row corresponds to an annotated intron and each column to a cluster. Example of the generated $MSR_A$ tables:
+
+```{r MSR-table, echo = F, eval = F}
+MSR_Acceptor[1:8, ] %>%
+  dplyr::mutate(across(where(is.numeric), round, 3)) %>%
+  `colnames<-`(c("Ref. jun. ID", "MSR Case", "MSR Control")) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16) %>%
+  kableExtra::column_spec(c(1), border_left = F, border_right = T)
+```
+
+Once we have calculated the $MSR_A$ and $MSR_D$ for every annotated intron and cluster, we use the paired Wilcoxon signed rank test to study if there is a significant variation in the median $MSR$ in cases vs. controls. To be more precise:
+
+* Null hypothesis (H0): *the observations $MSR_{case} - MSR_{control}$ are symmetric about $\mu$ = 0*.
+* Alternative hypothesis (H1): *the observations $MSR_{case} - MSR_{control}$ are not symmetric about $\mu$ = 0* (i.e. the distribution of $MSR_{case} - MSR_{control}$ is different than 0).
+
+We obtain two *p-values* (one for each splice site) to reject or not the null hypothesis in favour of the alternative hypothesis. If the p-value is small enough to reject the null hypothesis, we then evaluate the effect size of the difference in medians. Even though effect sizes are complex to interpret, commonly accepted values are: `0.10-0.3` (small effect), `0.3-0.5` (moderate effect) and `>=0.5` (large effect).
+
+# Results for Level 1 (Type) {.tabset}
+
+```{r}
+wilcox_cerebellum_l1_path <- file.path(results_path, "Cerebellum_Level_1/wilcox_test_MSR.rds")
+wilcox_frontal_l1_path <- file.path(results_path, "Frontal_Level_1/wilcox_test_MSR.rds")
+
+wilcox_cerebellum_l1 <- readRDS(wilcox_cerebellum_l1_path) %>% 
+  dplyr::mutate(Tissue = "Cerebellum", Level = "Type", lab = "Control RIN < 7", .before = splice_site)
+wilcox_frontal_l1 <- readRDS(wilcox_frontal_l1_path) %>% 
+  dplyr::mutate(Tissue = "Frontal", Level = "Type", lab = "RIN > 4", .before = splice_site)
+
+wilcox_l1 <- rbind(wilcox_cerebellum_l1, wilcox_frontal_l1) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(p.value.bonferroni = min(1, p.value*nrow(.))) %>%
+  dplyr::ungroup()
+```
+
+The studies for cases vs controls for each tissue report the following effect sizes after the Wilcoxon paired signed-rank test:
+
+```{r, fig.height=4, fig.width=7.2}
+ggplot(wilcox_l1 %>% 
+         dplyr::mutate(effect_size = ifelse(p.value.bonferroni <= 0.05, effect_size, 0)) %>%
+         dplyr::mutate(Tissue = factor(Tissue, levels = c("Cerebellum", "Frontal")))) +
+  geom_bar(aes(x = lab, y = effect_size, fill = splice_site), stat = "identity",
+           color = "black", linewidth = 0.25, width = 0.8, position = "dodge") +
+  geom_hline(data = data.frame(hline = c(-0.3, -0.1, 0, 0.1, 0.3)), aes(yintercept = hline), linewidth = 0.25) + 
+  viridis::scale_fill_viridis(option = "viridis", discrete = T, begin = 0.20, end = 0.75,
+                              name = "Splice site:",
+                              labels = c("MSR_A" = "Acceptor", "MSR_D" = "Donor"),
+                              guide = guide_legend(reverse = T)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)),
+                     breaks = seq(-0.2, 0.2, 0.05),
+                     labels = c("-0.2", "-0.15", "Small", "-0.05", "0", "0.05", "Small", "1.5", "0.2")) + 
+  scale_x_discrete(expand = expansion(add = c(0.5, 0.5))) +
+  labs(x = "Pseudobulk condition", y = "Effect size") +
+  ggtitle("Effect size by tissue") + 
+  coord_flip(ylim = c(-0.1, 0.1), xlim = c(1, 1), clip = "off") + 
+  ggforce::facet_col(vars(Tissue), scales = "free_y", space = "free") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid")) +
+  addArrows(x_arrow = 0.25, x_text_offset = 0.1, y_start = 0.05, y_end = 0.1, 
+            facet_info = c("Tissue" = "Frontal"), clusters = c("Case", "Control"))
+```
+
+In general, even if the difference in median is significant across clusters for both tissues and splice sites, the effect sizes are too small to be considered relevant. Results are also shown in the following table:
+
+```{r}
+wilcox_l1 %>%
+  dplyr::select(Tissue, splice_site, p.value, effect_size, magnitude) %>%
+  dplyr::mutate(p.value = signif(p.value, 3),
+                effect_size = round(effect_size, 3)) %>%
+  `colnames<-`(c("Tissue", "Splice site", "p-value", "Effect size", "Magnitude")) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16)
+```
+
+## Cerebellum {-}
+
+Distribution of sample RIN for Cerebellum level 1 study:
+
+```{r, fig.height=7.2/1, fig.width=7.2}
+metadata %>% 
+  dplyr::filter(Region == "Cerebellum") %>%
+  dplyr::filter(!(Type == "Control" & RIN >= 7)) %>%
+  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control"), weights = variance_cerebellum_df) %>%
+  plotMetadataSubsample(level = "Type") +
+  labs(x = "Disease status")
+```
+
+Control samples with $RIN > 7$ were removed.
+
+## Frontal Cortex {-}
+
+Distribution of sample RIN for Frontal Cortex level 1 study:
+
+```{r, fig.height=7.2/1.2, fig.width=7.2}
+metadata %>% 
+  dplyr::filter(Region == "Frontal") %>%
+  dplyr::filter(RIN > 4) %>%
+  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control")) %>%
+  plotMetadataSubsample(level = "Type") +
+  labs(x = "Disease status")
+```
+
+All samples with $RIN <= 4$ were removed.
+
+# Results for Level 2 (AtaxiaSubtype) {.tabset}
+
+```{r}
+wilcox_l2 <- foreach(i = seq_along(tissues)) %do%{
+  tissue = tissues[i]
+  tissue_path <- file.path(results_path, paste0(tissue, "_Level_2"))
+  
+  wilcox_l2_paths <- list.files(tissue_path, pattern = "^wilcox", recursive = T)
+  foreach(j = seq_along(wilcox_l2_paths)) %do%{
+    subtype_path <- wilcox_l2_paths[j]
+    
+    subtype <- str_split_fixed(subtype_path, "/", 2)[1]
+    
+    wilcox_test <- readRDS(file.path(tissue_path, subtype_path)) %>%
+      dplyr::mutate(Tissue = tissue, Subtype = subtype)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows() %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(p.value.bonferroni = min(1, p.value*nrow(.))) %>%
+  dplyr::ungroup()
+```
+
+The studies for ataxia subtype vs. controls for each tissue report the following effect sizes after the Wilcoxon paired signed-rank test:
+
+```{r, fig.height=5, fig.width=7.2}
+ggplot(wilcox_l2 %>% 
+         dplyr::mutate(effect_size = ifelse(p.value.bonferroni <= 0.05, effect_size, 0)) %>%
+         dplyr::mutate(Tissue = factor(Tissue, levels = c("Cerebellum", "Frontal"))) %>%
+         dplyr::mutate(Subtype = factor(Subtype, levels = c("KnownAtaxia", "UnknownAtaxia")))) +
+  geom_bar(aes(x = Subtype, y = effect_size, fill = splice_site), stat = "identity",
+           color = "black", linewidth = 0.25, width = 0.8, position = "dodge") +
+  geom_hline(data = data.frame(hline = c(-0.3, -0.1, 0, 0.1, 0.3)), aes(yintercept = hline), linewidth = 0.25) +
+  viridis::scale_fill_viridis(option = "viridis", discrete = T, begin = 0.20, end = 0.75,
+                              name = "Splice site:",
+                              labels = c("MSR_A" = "Acceptor", "MSR_D" = "Donor"),
+                              guide = guide_legend(reverse = T)) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02)),
+                     breaks = seq(-0.2, 0.2, 0.05),
+                     labels = c("-0.2", "-0.15", "Small", "-0.05", "0", "0.05", "Small", "1.5", "0.2")) + 
+  scale_x_discrete(expand = expansion(add = c(0.7, 0.7))) +
+  labs(x = "Pseudobulk condition", y = "Effect size") +
+  ggtitle("Effect size by tissue") + 
+  coord_flip(ylim = c(-0.15, 0.15), xlim = c(1, 2), clip = "off") +
+  ggforce::facet_col(vars(Tissue), scales = "free_y", space = "free") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid")) +
+  addArrows(x_arrow = -0.45, x_text_offset = 0.25, y_start = 0.05, y_end = 0.1,
+            facet_info = c("Tissue" = "Frontal"), clusters = c("Case", "Control"))
+
+```
+
+Results are also shown in the following table:
+
+```{r}
+wilcox_l2 %>%
+  dplyr::select(Subtype, Tissue, splice_site, p.value, effect_size, magnitude) %>%
+  dplyr::arrange(Subtype) %>%
+  dplyr::mutate(p.value = round(p.value, 3),
+                effect_size = round(effect_size, 3)) %>%
+  `colnames<-`(c("Subtype", "Tissue", "Splice site", "p-value", "Effect size", "Magnitude")) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16) %>%
+  kableExtra::pack_rows(index = table(wilcox_l2$Subtype))
+```
+
+```{r}
+tissues <- c("Cerebellum", "Frontal")
+ataxia_subtypes = c("KnownAtaxia", "UnknownAtaxia")
+all_metadata <- foreach(i = 1:2) %do%{
+  tissue = tissues[i]
+  
+  metadata_tissue <- metadata %>% 
+      dplyr::filter(Region == tissue)
+    
+  variance_df <- getVarianceDf(metadata_tissue, 
+                               results_path = here::here("results/"),
+                               output_file = here::here("variables/sample_junction_information.rds"))
+  
+  foreach(j = seq_along(ataxia_subtypes)) %do%{
+    subtype <- ataxia_subtypes[j]
+    
+    metadata_subsample <- metadata_tissue %>%
+      dplyr::filter(AtaxiaSubtype %in% c(subtype, "Control")) %>%
+      subsampleGowerDistance(level = "AtaxiaSubtype", clusters = c(subtype, "Control"), weights = variance_df) %>%
+      dplyr::mutate(study_group = subtype)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows() %>%
+  dplyr::mutate(study_group = factor(study_group, levels = c("KnownAtaxia", "UnknownAtaxia", "Control")),
+                AtaxiaSubtype = factor(AtaxiaSubtype, levels = c("Control", "KnownAtaxia", "UnknownAtaxia")))
+```
+
+## Cerebellum {-}
+
+Distribution of sample RIN for Cerebellum level 2 study:
+
+```{r, fig.height=7.2/1.5, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Cerebellum"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = AtaxiaSubtype), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = F,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+## Frontal Cortex {-}
+
+Distribution of sample RIN for Frontal Cortex level 2 study:
+
+```{r, fig.height=7.2/1.5, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Frontal"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = AtaxiaSubtype), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = F,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+# Results for Level 3 (Diagnosis) {.tabset}
+
+```{r}
+tissues = c("Cerebellum", "Frontal")
+wilcox_l3 <- foreach(i = seq_along(tissues)) %do%{
+  tissue = tissues[i]
+  tissue_path <- file.path(results_path, paste0(tissue, "_Level_3"))
+  
+  wilcox_l3_paths <- list.files(tissue_path, pattern = "^wilcox", recursive = T)
+  foreach(j = seq_along(wilcox_l3_paths)) %do%{
+    diagnosis_path <- wilcox_l3_paths[j]
+    
+    diagnosis <- str_split_fixed(diagnosis_path, "/", 2)[1]
+    
+    wilcox_test <- readRDS(file.path(tissue_path, diagnosis_path)) %>%
+      dplyr::mutate(Tissue = tissue, Diagnosis = diagnosis)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows() %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(p.value.bonferroni = min(1, p.value*nrow(.))) %>%
+  dplyr::ungroup()
+  
+```
+
+The studies for diagnosis vs. controls for each tissue report the following effect sizes after the Wilcoxon paired signed-rank test:
+
+```{r, fig.height=5, fig.width=7.2}
+ggplot(wilcox_l3 %>% 
+         dplyr::mutate(effect_size = ifelse(p.value.bonferroni <= 0.05, effect_size, 0)) %>%
+         dplyr::mutate(Tissue = factor(Tissue, levels = c("Cerebellum", "Frontal"))) %>%
+         dplyr::mutate(Diagnosis = factor(Diagnosis, levels = c("SCA6", "SCA2", "SCA1", "FRDA")))) +
+  geom_bar(aes(x = Diagnosis, y = effect_size, fill = splice_site), stat = "identity",
+           color = "black", linewidth = 0.25, width = 0.8, position = "dodge") +
+  geom_hline(data = data.frame(hline = c(-0.3, -0.1, 0, 0.1, 0.3)), aes(yintercept = hline), linewidth = 0.25) +
+  viridis::scale_fill_viridis(option = "viridis", discrete = T, begin = 0.20, end = 0.75,
+                              name = "Splice site:",
+                              labels = c("MSR_A" = "Acceptor", "MSR_D" = "Donor"),
+                              guide = guide_legend(reverse = T)) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02)),
+                     breaks = seq(-0.2, 0.2, 0.05),
+                     labels = c("-0.2", "-0.15", "Small", "-0.05", "0", "0.05", "Small", "1.5", "0.2")) + 
+  scale_x_discrete(expand = expansion(add = c(0.7, 0.7))) +
+  labs(x = "Pseudobulk condition", y = "Effect size") +
+  ggtitle("Effect size by tissue") + 
+  coord_flip(ylim = c(-0.1, 0.1), xlim = c(1, 4), clip = "off") +
+  ggforce::facet_col(vars(Tissue), scales = "free_y", space = "free") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid")) +
+  addArrows(x_arrow = -0.45, x_text_offset = 0.25, y_start = 0.05, y_end = 0.1,
+            facet_info = c("Tissue" = "Frontal"), clusters = c("Case", "Control"))
+
+```
+
+Results are also shown in the following table:
+
+```{r}
+wilcox_l3 %>%
+  dplyr::select(Diagnosis, Tissue, splice_site, p.value, effect_size, magnitude) %>%
+  dplyr::arrange(Diagnosis) %>%
+  dplyr::mutate(p.value = round(p.value, 3),
+                effect_size = round(effect_size, 3)) %>%
+  `colnames<-`(c("Diagnosis", "Tissue", "Splice site", "p-value", "Effect size", "Magnitude")) %>%
+  kableExtra::kbl(booktabs = T, linesep = "") %>%
+  kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+  kableExtra::row_spec(0, bold = T, font_size = 16) %>%
+  kableExtra::pack_rows(index = table(wilcox_l3$Diagnosis))
+```
+
+```{r}
+tissues <- c("Cerebellum", "Frontal")
+all_diagnosis <- c("FRDA", "SCA1", "SCA2", "SCA6")
+all_metadata <- foreach(i = 1:2) %do%{
+  tissue = tissues[i]
+  
+  metadata_tissue <- metadata %>% 
+      dplyr::filter(Region == tissue)
+    
+  variance_df <- getVarianceDf(metadata_tissue, 
+                               results_path = here::here("results/"),
+                               output_file = here::here("variables/sample_junction_information.rds"))
+  
+  foreach(j = seq_along(all_diagnosis)) %do%{
+    diagnosis <- all_diagnosis[j]
+    
+    metadata_subsample <- metadata_tissue %>%
+      dplyr::filter(Diagnosis %in% c(diagnosis, "Control")) %>%
+      subsampleGowerDistance(level = "Diagnosis", clusters = c(diagnosis, "Control"), weights = variance_df) %>%
+      dplyr::mutate(study_group = diagnosis)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows() %>%
+  dplyr::mutate(study_group = factor(study_group, levels = c("FRDA", "SCA1", "SCA2", "SCA6", "Control")),
+                Diagnosis = factor(Diagnosis, levels = c("Control", "FRDA", "SCA1", "SCA2", "SCA6")))
+```
+
+## Cerebellum {-}
+
+Distribution of sample RIN for Cerebellum level 3 study:
+
+```{r, fig.height=7.2/2, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Cerebellum"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = Diagnosis), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = T,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+## Frontal Cortex {-}
+
+Distribution of sample RIN for Frontal Cortex level 3 study:
+
+```{r, fig.height=7.2/2, fig.width=7.2}
+ggplot(all_metadata %>% dplyr::filter(Region == "Frontal"), 
+       aes(x = Type, y = RIN)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = Diagnosis), stackratio = 1.1, binaxis = "y", color = "black", stackdir = "center", dotsize = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.12))) +
+  facet_wrap(vars(study_group), scales = "free_x", ncol = 4) +
+  ggpubr::geom_pwc(aes(group = Type), vjust = -0.3, hide.ns = T,
+                     label = " p = {p.adj.format}", p.adjust.method = "bonferroni", p.adjust.by = "group") +
+  coord_cartesian(clip = "off") +
+  custom_gg_theme +
+  theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
+        strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
+```
+
+# Session info
+
+<details>
+  <summary>Show/hide</summary>
+
+```{r reproducibility, echo = FALSE}
+# Session info
+library("sessioninfo")
+options(width = 120)
+session_info()
+```
+
+</details> 
+
+# References
+
+<div id="refs"></div>
