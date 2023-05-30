@@ -34,6 +34,7 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
   dplyr::mutate(Individual_ID = stringr::str_split(ID_anon, "_", simplify = T)[1]) %>%
   dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1"))) %>%
   extractReadDepthMultiQC()
+metadata_project <- metadata
 
 
 ## Load common novel and common intron
@@ -611,12 +612,13 @@ cat(addTitles(base_level, 2), " <ins>Reads - annotated introns</ins> {-}\n", sep
 
 ```{r echo = F}
 common_introns %>%
+  dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case")) %>%
   dplyr::group_by(cluster) %>%
   dplyr::mutate(total_sum_counts = sum(ref_reads)) %>%
   dplyr::select(cluster, total_sum_counts) %>%
   dplyr::group_by(cluster, total_sum_counts) %>%
   dplyr::count() %>%
-  dplyr::left_join(metadata %>% select(Type, total_reads),
+  dplyr::left_join(metadata_project %>% select(Type, total_reads),
                    by = c("cluster" = "Type"), multiple = "all") %>%
   dplyr::group_by(cluster, total_sum_counts, n) %>%
   dplyr::summarise(total_read_depth = sum(total_reads)) %>%
@@ -652,7 +654,7 @@ common_novel %>%
   dplyr::group_by(novel_type, cluster) %>%
   dplyr::mutate(total_sum_counts = sum(novel_reads)) %>%
   dplyr::select(novel_type, cluster, total_sum_counts) %>%
-  dplyr::left_join(metadata %>% 
+  dplyr::left_join(metadata_project %>% 
                      dplyr::select(Type, total_reads) %>%
                      dplyr::group_by(Type) %>%
                      dplyr::summarise(total_reads = sum(total_reads)),

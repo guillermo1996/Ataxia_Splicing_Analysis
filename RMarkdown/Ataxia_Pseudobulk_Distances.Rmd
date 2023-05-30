@@ -680,10 +680,12 @@ Under the *Stats* subsection, we will study different statistics of the annotate
 Distribution of sample RIN for Cerebellum level 1 study:
 
 ```{r, fig.height=7.2/1.5, fig.width=7.2}
-metadata %>% 
+metadata_project <- metadata %>% 
   dplyr::filter(Region == "Cerebellum") %>%
   dplyr::filter(!(Type == "Control" & RIN >= 7)) %>%
-  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control"), weights = variance_cerebellum_df) %>%
+  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control"), weights = variance_cerebellum_df) 
+
+metadata_project %>%
   plotMetadataSubsample(level = "Type") +
   labs(x = "Disease status")
 ```
@@ -705,10 +707,12 @@ cat(knitr::knit_child("Template.Rmd", envir = environment(), quiet = T))
 Distribution of sample RIN for Frontal Cortex level 1 study:
 
 ```{r, fig.height=7.2/1.5, fig.width=7.2}
-metadata %>% 
+metadata_project <- metadata %>% 
   dplyr::filter(Region == "Frontal") %>%
   dplyr::filter(RIN > 4) %>%
-  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control")) %>%
+  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control")) 
+
+metadata_project %>%
   plotMetadataSubsample(level = "Type") +
   labs(x = "Disease status")
 ```
@@ -781,6 +785,8 @@ for(ataxia_subtype in all_sybtypes){
   cat(paste0("### ", ataxia_subtype, " {.tabset -}"))
   experiment_path <- file.path(project_path, ataxia_subtype)
   
+  metadata_project <- all_metadata %>% dplyr::filter(Region == tissue, study_group == ataxia_subtype)
+  
   common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
   common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
     dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case"))
@@ -817,6 +823,8 @@ base_level = 3
 for(ataxia_subtype in all_sybtypes){
   cat(paste0("### ", ataxia_subtype, " {.tabset -}"))
   experiment_path <- file.path(project_path, ataxia_subtype)
+  
+  metadata_project <- all_metadata %>% dplyr::filter(Region == tissue, study_group == ataxia_subtype)
   
   common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
   common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
@@ -883,6 +891,8 @@ for(diagnosis in all_diagnoses){
   cat(paste0("### ", diagnosis, " {.tabset -}"))
   experiment_path <- file.path(project_path, diagnosis)
   
+  
+  metadata_project <- all_metadata %>% dplyr::filter(Region == tissue, study_group == diagnosis)
   common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
   common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
     dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case"))
@@ -920,6 +930,7 @@ for(diagnosis in all_diagnoses){
   cat(paste0("### ", diagnosis, " {.tabset -}"))
   experiment_path <- file.path(project_path, diagnosis)
   
+  metadata_project <- all_metadata %>% dplyr::filter(Region == tissue, study_group == diagnosis)
   common_introns <- readRDS(file.path(experiment_path, "common_introns.rds"))
   common_novel <- readRDS(file.path(experiment_path, "common_novel.rds")) %>%
     dplyr::mutate(cluster = ifelse(cluster == "Control", "Control", "Case"))
