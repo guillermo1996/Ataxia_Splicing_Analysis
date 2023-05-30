@@ -21,6 +21,8 @@
 #' @param bedtools_path Path to the
 #'   \href{https://bedtools.readthedocs.io/en/latest/}{bedtools} executable. Can
 #'   be left empty if bedtools is in default PATH.
+#' @param samtools_path Path to the samtools executable. Can be left empty if
+#'   samtools is in default PATH.
 #' @param fasta_path Path to the fasta .fa file for the reference genome.
 #' @param fordownload_path Path to the MaxEntScan pearl scripts. Can be
 #'   downloaded from
@@ -38,6 +40,7 @@ junctionAnnotation <- function(all_reads_combined,
                                blacklist_path = "/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed",
                                gtf_path = "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.chr.gtf",
                                bedtools_path = "/home/grocamora/tools/bedtools/",
+                               samtools_path = "/home/grocamora/tools/samtools/bin/",
                                fasta_path = "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.dna.primary_assembly.fa",
                                fordownload_path = "/home/grocamora/tools/fordownload/",
                                rw_disk = T,
@@ -80,6 +83,7 @@ junctionAnnotation <- function(all_reads_combined,
   
   ## Annotate Dasper
   edb <- loadEdb(gtf_path)
+  #use_symbol <- isGeneSymbolAvailable(edb)
   annotated_SR_details <- annotateDasper(all_reads_pruned, edb) %>% 
     tibble::as_tibble()
   
@@ -93,13 +97,16 @@ junctionAnnotation <- function(all_reads_combined,
   annotated_SR_details <- removeAmbiguousGenes(annotated_SR_details)
   
   ## Add biotype percentage
-  annotated_SR_details <- generateBiotypePercentage(annotated_SR_details,
-                                                    edb)
+  if(isGeneSymbolAvailable(edb)){
+    annotated_SR_details <- generateBiotypePercentage(annotated_SR_details, edb)
+  }
+  
   ## Generate MaxEntScore
-  annotated_SR_details <- generateMaxEntScore(annotated_SR_details,
+  annotated_SR_details <- generateMaxEntScore(input_SR_details = annotated_SR_details,
                                               bedtools_path = bedtools_path,
                                               fasta_path = fasta_path,
-                                              fordownload_path = fordownload_path)
+                                              fordownload_path = fordownload_path,
+                                              samtools_path = samtools_path)
   
   
   ## Save the results.
@@ -157,12 +164,17 @@ removeEncodeBlacklistRegions <- function(GRdata,
 #' @export 
 annotateDasper <- function(GRdata, edb) {
   logger::log_info("\t\t Annotating using dasper::junction_annot().")
+  if(isGeneSymbolAvailable(edb)){
+    ref_cols <- c("gene_id", "gene_name", "symbol", "tx_id")
+    ref_cols_to_merge <- c("gene_id", "gene_name", "tx_id")
+  }else{
+    ref_cols <- c("gene_id", "tx_id")
+    ref_cols_to_merge <- c("gene_id", "tx_id")
+  }
   GRdata <- dasper::junction_annot(GRdata,
                                    ref = edb,
-                                   ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"),
-                                   ref_cols_to_merge = c("gene_id", "gene_name", "tx_id")
-  )
-  
+                                   ref_cols = ref_cols,
+                                   ref_cols_to_merge = ref_cols_to_merge)
   return(GRdata)
 }
 
@@ -214,6 +226,8 @@ removeAmbiguousGenes <- function(input_SR_details) {
 #' @param bedtools_path Path to the
 #'   \href{https://bedtools.readthedocs.io/en/latest/}{bedtools} executable. Can
 #'   be left empty if bedtools is in default PATH.
+#' @param samtools_path Path to the samtools executable. Can be left empty if
+#'   samtools is in default PATH.
 #' @param fasta_path Path to the fasta fa file for the reference genome.
 #' @param fordownload_path Path to the MaxEntScan pearl scripts. Can be
 #'   downloaded from
@@ -223,6 +237,7 @@ removeAmbiguousGenes <- function(input_SR_details) {
 #' @export
 generateMaxEntScore <- function(input_SR_details,
                                 bedtools_path = "",
+                                samtools_path = "",
                                 fasta_path = "~/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.dna.primary_assembly.fa",
                                 fordownload_path = "~/tools/fordownload/") {
   logger::log_info("\t\t Calculating the MaxEntScore.")
@@ -237,6 +252,7 @@ generateMaxEntScore <- function(input_SR_details,
       acceptorSeqStart = ifelse(strand == "-", start - 4, end - 20),
       acceptorSeqStop = ifelse(strand == "-", start + 19, end + 3)
     )
+  
   
   ## Generate the dataframes for both donor and acceptors.
   donor_df <- GRdata %>%
@@ -256,6 +272,17 @@ generateMaxEntScore <- function(input_SR_details,
                   strands = strand
     ) %>%
     dplyr::mutate(scores = ".", .before = strands)
+  
+  ## If the fasta file does not follow NCBI seqnames style (chromosome names
+  ## include "chr"), set the style for the GRdata object. It requires an index
+  ## of the fasta file (samtools required to create it).
+  if(!isFastaSeqnamesStyleNCBI(fasta_path, samtools_path)){
+    donor_df <- donor_df %>%
+      dplyr::mutate(seqnames = str_c("chr", seqnames))
+    acceptor_df <- acceptor_df %>%
+      dplyr::mutate(seqnames = str_c("chr", seqnames))
+  }
+  
   
   ## Generate temporary files to store the sequences
   tmp_file <- tempfile()

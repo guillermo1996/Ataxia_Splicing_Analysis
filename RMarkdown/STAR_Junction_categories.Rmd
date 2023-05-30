@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - STAR junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.2
+  affiliation: UCL - Version 1.2.2
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -116,8 +116,7 @@ blacklist_path = file.path("/home/grocamora/RytenLab-Research/Additional_files/h
 metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>% 
   dplyr::rowwise() %>%
   dplyr::mutate(Individual_ID = stringr::str_split(ID_anon, "_", simplify = T)[1]) %>%
-  dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1"))) %>%
-  extractReadDepthMultiQC(multiqc_path)
+  dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1")))
 ```
 
 ## Changelog {.tabset -}

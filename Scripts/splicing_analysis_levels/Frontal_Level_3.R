@@ -1,22 +1,27 @@
 ## _________________________________________________
 ##
-## Script title
+## Ataxia Level 3 (Diagnosis) Analysis - Frontal Cortex
 ##
-## Aim: 
+## Aim: calculate the mis-splicing ratio of the annotated junction after
+## pseudobulking by tissue and ataxia diagnosis (level 3).
 ##
 ## Author: Mr. Guillermo Rocamora Pérez
 ##
-## Date Created: 
+## Date Created: 29/05/2023
 ##
-## Copyright (c) Guillermo Rocamora Pérez, year
+## Copyright (c) Guillermo Rocamora Pérez, 2023
 ##
 ## Email: guillermorocamora@gmail.com
 ## _________________________________________________
 ##
 ## Notes:
 ##
+## This script is the third step in the Splicing Noise Analysis. We must first
+## generate the junction files (see "download_and_extraction.R" script) and the
+## main pipeline script (see "splicing_noise_analysis.R"). In this script, we
+## focus on Frontal Cortex Level 3 studies.
 ##
-## Please contact guillermorocamora@gmail.com for further assitance.
+## Please contact guillermorocamora@gmail.com for further assistance.
 ## _________________________________________________
 
 # Initial setup ----
@@ -35,6 +40,7 @@ options(lifecycle_verbosity = "warning")
 source(here::here("R/hf_project_analysis.R"))
 source(here::here("R/hf_graph_and_themes.R"))
 source(here::here("R/hf_subsample.R"))
+source(here::here("R/hf_additional.R"))
 
 ## Relevant Paths
 if(!exists("results_path")) results_path <- here::here("results/")
@@ -49,7 +55,7 @@ all_diagnosis <- c("FRDA", "SCA1", "SCA2", "SCA6")
 doParallel::registerDoParallel(4)
 
 ## Load the initial information
-if(!exists("metadata")){
+if(!exists("metadata", inherits = F)){
   metadata_path <- here::here("metadata/metadata.csv") 
   multiqc_path <- here::here("metadata/multiqc_rseqc_read_distribution.txt")
   metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>% 
@@ -59,9 +65,12 @@ if(!exists("metadata")){
     extractReadDepthMultiQC(multiqc_path)   # Add total reads information from MultiQC
 }
 
-# Metadata ----
-metadata_project <- metadata %>% 
-  dplyr::filter(Region == "Frontal")
+# Metadata & subsampling weights ----
+metadata_frontal <- metadata %>% dplyr::filter(Region == "Frontal") 
+variance_df <- getVarianceDf(metadata_frontal, 
+                                        results_path = results_path,
+                                        output_file = here::here("variables/variance_explained_frontal.rds"))
+metadata_project <- metadata_frontal
 
 # Pipeline for each possible diagnosis ----
 foreach(i = seq_along(all_diagnosis)) %do%{
@@ -74,7 +83,7 @@ foreach(i = seq_along(all_diagnosis)) %do%{
     dplyr::filter(!!sym(level) %in% clusters)
   
   ## Subsample using Gower distance ----
-  metadata_subsample <- subsampleGowerDistance(metadata_diagnosis, level, clusters)
+  metadata_subsample <- subsampleGowerDistance(metadata_diagnosis, level, clusters, weights = variance_df)
   output_figure = paste0(diagnosis_path, "metadata_distributions.png")
   plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
   
@@ -89,6 +98,7 @@ foreach(i = seq_along(all_diagnosis)) %do%{
   ## Wilcox paired signed-rank test ----
   logger::log_info("\t Loading the common introns.")
   common_introns <- getCommonIntrons(diagnosis_path)
+  common_novel <- getCommonNovel(diagnosis_path, common_introns)
   
   logger::log_info("\t Executing the Wilcoxon paired signed-rank test.")
   wilcox_test <- MSRanalysis(common_introns, diagnosis_path, clusters)

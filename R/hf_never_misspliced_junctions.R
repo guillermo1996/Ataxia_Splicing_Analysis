@@ -179,10 +179,19 @@ appendNeverMissplicedIntrons <- function(cluster_split_reads_never,
   ## never mis-spliced junctions.
   df_all <- dplyr::bind_rows(cluster_distances_tidy, df_never)
   
-  df_all <- df_all %>%
-    dplyr::left_join(cluster_annotated_SR_details %>% select(junID, gene_id_junction, gene_name_junction, tx_id_junction),
-                     by = c("ref_junID" = "junID")) %>%
-    dplyr::rename(gene_id = gene_id_junction,
-                  gene_name = gene_name_junction)
+  ## If no gene name is found, then ignore
+  if("gene_name_junction" %in% colnames(cluster_annotated_SR_details)){
+    df_all <- df_all %>%
+      dplyr::left_join(cluster_annotated_SR_details %>% select(junID, gene_id_junction, gene_name_junction, tx_id_junction),
+                       by = c("ref_junID" = "junID")) %>%
+      dplyr::rename(gene_id = gene_id_junction,
+                    gene_name = gene_name_junction)
+  }else{
+    df_all <- df_all %>%
+      dplyr::left_join(cluster_annotated_SR_details %>% select(junID, gene_id_junction, tx_id_junction),
+                       by = c("ref_junID" = "junID")) %>%
+      dplyr::rename(gene_id = gene_id_junction)
+  }
+  
   return(df_all)
 }

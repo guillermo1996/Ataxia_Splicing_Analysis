@@ -50,9 +50,11 @@ generateDB <- function(cluster_distances_tidy_all,
   db_introns <- generateIntronDB(df_misspliced, df_never, cluster_annotated_SR_details)
   
   ## Add biotype percentage
-  db_introns <- db_introns %>%
-    dplyr::left_join(cluster_annotated_SR_details %>% select(junID, protein_coding, lncRNA),
-                     by = c("ref_junID" = "junID"))
+  if("protein_coding" %in% colnames(cluster_annotated_SR_details)){
+    db_introns <- db_introns %>%
+      dplyr::left_join(cluster_annotated_SR_details %>% select(junID, protein_coding, lncRNA),
+                       by = c("ref_junID" = "junID"))
+  }
   
   ## Add intron type
   db_introns <- addIntronType(db_introns,
@@ -176,7 +178,7 @@ generateIntronDB <- function(df_misspliced,
                      by = c("ref_junID" = "junID")) %>%
     dplyr::rename(ref_ss5score = ss5score,
                   ref_ss3score = ss3score) %>%
-    tidyr::unnest(c(gene_id, gene_name))
+    tidyr::unnest(any_of(c("gene_id", "gene_name")))
   
   ## Annotate the type of annotated junction as "both", "novel", "donor" or
   ## "never"

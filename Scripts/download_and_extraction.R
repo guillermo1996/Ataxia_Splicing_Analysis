@@ -22,7 +22,7 @@
 ## "login_aws.sh" and follow the instructions. Some security parameters need to
 ## be input in the "generate_crendetials.R" script.
 ##
-## Please contact guillermorocamora@gmail.com for further assitance.
+## Please contact guillermorocamora@gmail.com for further assistance.
 ## _________________________________________________
 
 # Initial setup ----

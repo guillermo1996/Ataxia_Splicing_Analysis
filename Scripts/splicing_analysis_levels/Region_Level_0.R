@@ -1,27 +1,22 @@
 ## _________________________________________________
 ##
-## Ataxia Level 1 (Type) Analysis - Cerebellum
+## Script title
 ##
-## Aim: calculate the mis-splicing ratio of the annotated junction after
-## pseudobulking by tissue and disease status (level 1).
+## Aim: 
 ##
 ## Author: Mr. Guillermo Rocamora Pérez
 ##
-## Date Created: 29/05/2023
+## Date Created: 
 ##
-## Copyright (c) Guillermo Rocamora Pérez, 2023
+## Copyright (c) Guillermo Rocamora Pérez, year
 ##
 ## Email: guillermorocamora@gmail.com
 ## _________________________________________________
 ##
 ## Notes:
 ##
-## This script is the third step in the Splicing Noise Analysis. We must first
-## generate the junction files (see "download_and_extraction.R" script) and the
-## main pipeline script (see "splicing_noise_analysis.R"). In this script, we
-## focus on Cerebellum Level 1 studies.
 ##
-## Please contact guillermorocamora@gmail.com for further assistance.
+## Please contact guillermorocamora@gmail.com for further assitance.
 ## _________________________________________________
 
 # Initial setup ----
@@ -44,13 +39,13 @@ source(here::here("R/hf_additional.R"))
 
 ## Relevant Paths
 if(!exists("results_path")) results_path <- here::here("results/")
-project_path <- file.path(results_path, "Cerebellum_Level_1/")
+project_path <- file.path(results_path, "Region_Level_0/")
 
 dir.create(project_path, showWarnings = F, recursive = T)
 
 ## Script parameters
-level = "Type"
-clusters = c("Case", "Control")
+level = "Region"
+clusters = c("Cerebellum", "Frontal")
 
 doParallel::registerDoParallel(4)
 
@@ -66,18 +61,17 @@ if(!exists("metadata", inherits = F)){
 }
 
 # Metadata & clustering ----
-metadata_cerebellum <- metadata %>%  dplyr::filter(Region == "Cerebellum") 
-variance_df <- getVarianceDf(metadata_cerebellum, 
-                                        results_path = results_path,
-                                        output_file = here::here("variables/variance_explained_cerebellum.rds"))
-metadata_project <- metadata_cerebellum %>% dplyr::filter(!(Type == "Control" & RIN >= 7))
+metadata_project <- metadata
+variance_df <- getVarianceDf(metadata_project,
+                             results_path = results_path,
+                             output_file = here::here("variables/variance_explained.rds"))
 
-## Subsample using Gower distance
+## Subsample using Gower distance ----
 metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_project,
                                              level = level,
                                              clusters = clusters,
                                              weights = variance_df)
-
+plotMetadataSubsample(metadata_subsample, level)
 output_figure = paste0(project_path, "metadata_distributions.png")
 plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
 
@@ -92,7 +86,6 @@ projectAnalysis(metadata_project = metadata_subsample,
 # Wilcox paired signed-rank test ----
 logger::log_info("\t Loading the common introns.")
 common_introns <- getCommonIntrons(project_path)
-common_novel <- getCommonNovel(project_path, common_introns)
 
 logger::log_info("\t Executing the Wilcoxon paired signed-rank test.")
 wilcox_test <- MSRanalysis(common_introns, project_path, clusters = c("Case", "Control"))

@@ -26,6 +26,15 @@ custom_gg_theme_subtitle <- custom_gg_theme +
         legend.title = element_text(size=11),
         legend.text = element_text(size=10))
 
+novel_labels <- c("novel_acceptor" = "Novel Acceptor", "novel_donor" = "Novel Donor")
+novel_labels <- c("novel_donor" = "Novel Donor", "novel_acceptor" = "Novel Acceptor")
+novel_mini_labels <- c("donor" = "Novel Donor", "acceptor" = "Novel Acceptor")
+sequence_labels <- c("acceptor exon" = "Acceptor exon",
+                     "acceptor intron" = "Acceptor intron",
+                     "donor exon" = "Donor exon",
+                     "donor intron" = "Donor intron")
+delta_MES_labels <- c("delta MES 5'ss" = "Delta MES 5'ss", "delta MES 3'ss" = "Delta MES 3'ss")
+
 
 plotMetadataSubsample <- function(metadata_subsample, level, ref_group = NULL, output_file = "", ratio = 1, dpi = 300){
   p <- ggplot(metadata_subsample, aes(x = !!sym(level), y = RIN)) +
@@ -40,3 +49,23 @@ plotMetadataSubsample <- function(metadata_subsample, level, ref_group = NULL, o
   return(p)
 }
 
+
+addArrows <- function(x_arrow, x_text_offset, y_start, y_end, facet_info, clusters){
+  data_arrow <- tibble(x_start = x_arrow, 
+                       x_end = x_arrow, 
+                       y_start = c(y_start, -y_start), 
+                       y_end = c(y_end, -y_end), 
+                       facet_info)
+  
+  data_text <- tibble(x = x_arrow-x_text_offset,
+                      y = c((y_start+y_end)/2*0.95,
+                            -(y_start+y_end)/2*0.95),
+                      label = c(parse(text = paste0('"MSR[', clusters[1], ']', '>', 'MSR[', clusters[2], ']"')),
+                                parse(text = paste0('"MSR[', clusters[1], ']', '<', 'MSR[', clusters[2], ']"'))))
+  
+  list(geom_segment(aes(x = x_start, xend = x_end, y = y_start, yend = y_end), 
+                    arrow = arrow(type = "closed", length = unit(0.1, "npc")), linewidth = 0.2,
+                    data = data_arrow),
+       geom_text(aes(x = x, y = y, label = label),
+                 parse = T, size = 3, data = data_text))
+}

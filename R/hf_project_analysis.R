@@ -102,6 +102,42 @@ getCommonIntrons <- function(project_path, prune = T, overwrite = F, output_file
   return(common_introns)
 }
 
+getCommonNovel <- function(project_path, common_introns, prune = T, overwrite = F, output_file = "common_novel.rds"){
+  if(file.exists(paste0(project_path, output_file)) & !overwrite){
+    common_novel <- readRDS(paste0(project_path, output_file))
+    return(common_novel)
+  }
+  
+  novel_files <- list.files(project_path, pattern = "_db_novel.rds$")
+  global_novel <- foreach(i = seq_along(novel_files)) %do%{
+    cluster_file <- novel_files[i]
+    cluster_name <- stringr::str_split_fixed(cluster_file, "_", 2)[1]
+    cluster_introns <- readRDS(paste0(project_path, cluster_file)) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(cluster = cluster_name)
+    
+    return(cluster_introns)
+  } %>% dplyr::bind_rows()
+
+  
+  if(prune){
+    global_novel <- global_novel %>%
+      dplyr::select(novel_junID, ref_junID, novel_type, novel_reads, distance, novel_ss5score, novel_ss3score, ref_ss5score, ref_ss3score, cluster) %>%
+      dplyr::mutate(delta_ss5score = ref_ss5score - novel_ss3score,
+                    delta_ss3score = ref_ss3score - novel_ss3score) %>%
+      dplyr::select(-ref_ss5score, -ref_ss3score, -novel_ss5score, -novel_ss3score)
+  }
+  
+  common_novel <- global_novel %>%
+    dplyr::filter(ref_junID %in% unique(common_introns$ref_junID))
+  
+  if(output_file != ""){
+    common_novel %>% saveRDS(paste0(project_path, output_file))
+  }
+  
+  return(common_novel)
+}
+
 MSRanalysis <- function(common_introns, project_path, clusters, splice_sites = c("Donor", "Acceptor"), overwrite = F, output_file = "wilcox_test_MSR.rds"){
   if(file.exists(paste0(project_path, output_file)) & !overwrite){
     wilcox_test_MSR <- readRDS(paste0(project_path, output_file))
