@@ -1,4 +1,4 @@
-# Ataxia_Splicing_Analysis
+# Ataxia Splicing Noise Analysis
 
 This repository contains the code related to the splicing analysis on Ataxia RNAseq samples. 
 
