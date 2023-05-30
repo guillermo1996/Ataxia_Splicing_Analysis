@@ -55,7 +55,7 @@ loadEdb <- function(gtf_path) {
 #' @export
 loadGTF <- function(gtf_path){
   ref <- GenomicFeatures::makeTxDbFromGFF(gtf_path)
-  seqlevelsStyle(ref) <- "NCBI"
+  GenomeInfoDb::seqlevelsStyle(ref) <- "NCBI"
   
   return(ref)
 }

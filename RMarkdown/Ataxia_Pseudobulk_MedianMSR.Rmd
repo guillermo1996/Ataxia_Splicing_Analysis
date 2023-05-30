@@ -118,9 +118,11 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 
 ### v2.0 {-}
 
-* Updated the clusters to always compare the same number of samples between cases and controls.
+* Now, the clusters always compare the same number of samples between cases and controls. Procedure explained in methodology.
 
 * Added results for Level 2 (AtaxiaSubtype) and references.
+
+* Changed the reference transcriptome from Gencode v43 to Gencode v39.
 
 * Updated methodology.
 
@@ -324,7 +326,7 @@ wilcox_l1 %>%
 
 Distribution of sample RIN for Cerebellum level 1 study:
 
-```{r, fig.height=7.2/1, fig.width=7.2}
+```{r, fig.height=7.2/1.2, fig.width=7.2}
 metadata %>% 
   dplyr::filter(Region == "Cerebellum") %>%
   dplyr::filter(!(Type == "Control" & RIN >= 7)) %>%
@@ -390,14 +392,14 @@ ggplot(wilcox_l2 %>%
                      breaks = seq(-0.2, 0.2, 0.05),
                      labels = c("-0.2", "-0.15", "Small", "-0.05", "0", "0.05", "Small", "1.5", "0.2")) + 
   scale_x_discrete(expand = expansion(add = c(0.7, 0.7))) +
-  labs(x = "Pseudobulk condition", y = "Effect size") +
+  labs(x = "Ataxia subtype", y = "Effect size") +
   ggtitle("Effect size by tissue") + 
   coord_flip(ylim = c(-0.15, 0.15), xlim = c(1, 2), clip = "off") +
   ggforce::facet_col(vars(Tissue), scales = "free_y", space = "free") +
   custom_gg_theme +
   theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
         strip.background = element_rect(color="black", linewidth=0.5, linetype="solid")) +
-  addArrows(x_arrow = -0.45, x_text_offset = 0.25, y_start = 0.05, y_end = 0.1,
+  addArrows(x_arrow = -0.1, x_text_offset = 0.25, y_start = 0.05, y_end = 0.14,
             facet_info = c("Tissue" = "Frontal"), clusters = c("Case", "Control"))
 
 ```
@@ -613,6 +615,54 @@ ggplot(all_metadata %>% dplyr::filter(Region == "Frontal"),
   theme(panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = .5),
         strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
 ```
+
+<!-- # Additional studies -->
+
+<!-- ## Effects of number of samples in Wilcoxon tests {#addS_wilcoxon} -->
+
+<!-- Previous results (not shown in this report) showed us that there seems to be a relationship between the number of samples being clustered and the median MSR values. This result is to be expected if we analyse the situation. We have already proven in the past that the number of samples increase the number of novel junctions, which increases the likelihood of a mis-splicing event to be found for any particular intron. As such, it is expected that more reference introns have a different than zero MSR value, which would lead to an increase in the median MSR. The reduction in the proportion of MSR = 0 reference introns was observed for both tissues and splice sites in control samples: -->
+
+<!-- Given the results by diagnosis, it seems that there is a relationship between the number of samples being clustered and the median MSR values. This result is to be expected if we analyse the situation. We have already proven in the past that the number of samples increase the number of novel junctions, which increases the likelihood of a mis-splicing event to be found for any particular intron. As such, it is expected that more reference introns have a different than zero MSR value, which would lead to an increase in the median MSR. The reduction in the proportion of MSR = 0 reference introns was observed for both tissues and splice sites in control samples: -->
+
+<!-- ```{r, fig.height=4, fig.width=7.2} -->
+<!-- stats_results <- readRDS(here::here("tests/Control_vs_Control-1vsN/stats_results.rds")) -->
+
+<!-- stats_results %>% -->
+<!--   dplyr::mutate(N = as.integer(N)*3) %>% -->
+<!--   tidyr::pivot_longer(cols = Case_zero_prop:Control_nonZeroMean_MSR) %>% -->
+<!--   dplyr::filter(name == "Control_zero_prop") %>% -->
+<!--   ggplot(aes(x = N, y = value, color = splice_site, group = splice_site)) + -->
+<!--   geom_point() + -->
+<!--   geom_line() +  -->
+<!--   scale_x_continuous(breaks = seq(3, 21, 3)) + -->
+<!--   viridis::scale_color_viridis(option = "viridis", discrete = T, begin = 0.25, end = 0.75, name = "Splice site:") + -->
+<!--   labs(x = "Number of samples in cluster", y = "MSR = 0 Proportion") + -->
+<!--   ggtitle("Proportion of MSR = 0", subtitle = "Control samples") +  -->
+<!--   facet_wrap(vars(tissue), scales = "free_x") + -->
+<!--   custom_gg_theme_subtitle -->
+<!-- ``` -->
+
+<!-- To expand on this idea, I tested a Wilcoxon paired signed-rank test between different control samples. We will call cluster A as the one constructed from three control samples: the highest RIN, the lowest RIN and the median RIN. Then, different clusters will be generated based on different number of samples per sample in cluster A. Let's call cluster B1 to the one generated with three samples in total, selected to to minimize the weighed Gower's dissimilarity index to each of the case samples of cluster A. Cluster B2 then would be created with two samples per sample in cluster A (i.e. 6 samples in total). These will be called clusters B. -->
+
+<!-- Once we have clusters A and B, we execute a Wilcoxon test to compare the median MSR between both clusters and splice sites. Positive results would mean a higher MSR median in cluster A, while negative results represents the opposite. Results are shown in the following figure: -->
+
+<!-- ```{r, fig.height=4, fig.width=7.2} -->
+<!-- wilcox_results_1vsN <- readRDS(here::here("tests/Control_vs_Control-1vsN/wilcox_results.rds")) -->
+
+<!-- wilcox_results_1vsN %>%  -->
+<!--   dplyr::filter(p.value <= 0.05/nrow(.)) %>% -->
+<!--   ggplot(aes(x = N, y = effect_size, color = splice_site, group = splice_site)) +  -->
+<!--   geom_point() + -->
+<!--   geom_line() + -->
+<!--   viridis::scale_color_viridis(option = "viridis", discrete = T,  -->
+<!--                                begin = 0.20, end = 0.75, name = "Splice site:") + -->
+<!--   labs(x = "Second cluster samples per initial cluster sample", y = "Effect size") + -->
+<!--   ggtitle("Influence of effect size by number of samples") +  -->
+<!--   ggforce::facet_row(vars(tissue), scales = "free_x") + -->
+<!--   custom_gg_theme -->
+<!-- ``` -->
+
+<!-- As observed previously, the effect size decreases as we increase the samples in cluster B. Thus, in the studies in which the number of control samples is bigger than the number off case samples, it is expected that the Wilcoxon tests report a decrease in the median MSR values. -->
 
 # Session info
 

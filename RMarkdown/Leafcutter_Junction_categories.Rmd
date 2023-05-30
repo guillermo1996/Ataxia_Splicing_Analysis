@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - Leafcutter junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.1
+  affiliation: UCL - Version 1.2
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -89,7 +89,11 @@ intron_type_levels <- c("annotated", "novel_acceptor", "novel_donor",
 
 This report is meant to be used as a template. As such, the different sections will include instructions on how to modify the graphic outputs and not descriptions about the results themselves.
 
-To run this script, it is necessary to source the file at `/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/R/Leafcutter_introns.R` with needed helper functions.
+## Changelog {.tabset -}
+
+### v1.2 {-}
+
+* Changed the reference transcriptome to Gencode v39.
 
 # Annotate introns
 
@@ -97,7 +101,7 @@ To annotate the junctions, we need to set the following variables:
 
 * `use_strand`: whether to use the strand information for the Leafcutter clusters' ID.
 
-* `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v43 is employed (also tested with ENSEMBL v105).
+* `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v39 is employed (also tested with ENSEMBL v105).
 
 ```{r, echo = T}
 # For the Ataxia dataset, the cluster IDs don't have a valid strand. Set to FALSE.
@@ -105,7 +109,7 @@ use_strand <- F
 
 # Path to the gtf file to annotate the introns
 #gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
-gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf"
+gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v39.annotation.gtf"
 ```
 
 ## Loading leafcutter results
@@ -127,7 +131,7 @@ The junctions are annotated using the function `junction_annot` from David Zhang
 
 ```{r, echo = T}
 # Path to where the annotated intron list will be stored in disk.
-annotated_path <- file.path(main_path, "variables/annotated_gencode43.rds")
+annotated_path <- file.path(main_path, "variables/annotated_gencode39.rds")
 
 # If file already exists, do not execute the annotation process.
 if(!file.exists(annotated_path)){
@@ -136,7 +140,7 @@ if(!file.exists(annotated_path)){
   
   # Some reference transcriptomes (i.e. Gencode) use the characters "chr" before
   # the seqnames. To bring consistency, the "seqlevelsStyle" is set to "NCBI".
-  seqlevelsStyle(TxDb_ref) <- c("NCBI")
+  GenomeInfoDb::seqlevelsStyle(TxDb_ref) <- c("NCBI")
   
   annotated <- leafcutter_list %>% purrr::map(function(x){
     # Extract the successful clusters

@@ -1,9 +1,9 @@
 subsampleGowerDistance <- function(metadata_project,
-                                   level,
-                                   clusters,
-                                   ref_cluster = NULL,
-                                   weights = NULL,
-                                   n = 1){
+                                       level,
+                                       clusters,
+                                       ref_cluster = NULL,
+                                       weights = NULL,
+                                       n = 1){
   # Default weights for "RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex". RIN
   # is usually the only relevant one.
   if(any(class(weights) == "data.frame")){
@@ -23,44 +23,108 @@ subsampleGowerDistance <- function(metadata_project,
       dplyr::group_by(!!sym(level)) %>% 
       dplyr::mutate(n = n()) %>%
       dplyr::ungroup() %>%
-      dplyr::slice_min(n)
+      dplyr::slice_min(n) %>%
+      dplyr::select(-n)
     
     ref_cluster <- ref_metadata_cluster %>% 
       dplyr::pull(!!sym(level)) %>%
       unique()
   }
   
-  # For every other cluster, extract the samples with the lowest Gower distance
   metadata_subsample <- foreach(i = seq_along(clusters)) %do%{
     cluster <- clusters[i]
     if(cluster == ref_cluster) return()
     
-    cluster_samples <- metadata_project %>%
-      dplyr::filter(!!sym(level) == cluster)
+    cluster_metadata_samples <- metadata_project %>% dplyr::filter(!!sym(level) == cluster)
+    cluster_samples <- cluster_metadata_samples %>% prepareMetadata()
     
-    # Loop for the number of samples to extract per reference sample
-    cluster_subsamples <- foreach(j = 1:n) %do%{
-      # Loop thorugh all the reference samples
+    foreach(j = 1:n) %do%{
+      ref_samples <- ref_metadata_cluster %>% prepareMetadata()
+      
       foreach(k = 1:nrow(ref_metadata_cluster)) %do%{
-        # Prepare the metadata to measure the Gower Distance
-        ref_sample <- ref_metadata_cluster[k, ] %>% prepareMetadata()
-        cluster_samples_df <- cluster_samples %>% prepareMetadata()
+        distances_df <- StatMatch::gower.dist(ref_samples, cluster_samples, var.weights = weights) %>%
+          `rownames<-`(rownames(ref_samples)) %>%
+          `colnames<-`(rownames(cluster_samples))
         
-        cluster_id <- StatMatch::gower.dist(ref_sample, cluster_samples_df, var.weights = weights) %>%
-          `rownames<-`(rownames(ref_sample)) %>%
-          `colnames<-`(rownames(cluster_samples_df)) %>% .[1, ] %>% which.min()
+        min_ref <- names(which.min(apply(distances_df, 1, min)))
+        min_cluster <- names(which.min(apply(distances_df, 2, min)))
         
-        # Extract the matched sample
-        matched_sample <- cluster_samples[cluster_id, ]
-        cluster_samples <- cluster_samples[-cluster_id, ]
+        matched_samples <- rbind(ref_metadata_cluster[ref_metadata_cluster$Individual_ID == min_ref, ], 
+                                 cluster_metadata_samples[cluster_metadata_samples$Individual_ID == min_cluster, ])
+        ref_samples <- ref_samples[!(rownames(ref_samples) == min_ref), ]
+        cluster_samples <- cluster_samples[!(rownames(cluster_samples) == min_cluster), ]
         
-        return(matched_sample)
+        return(matched_samples)
       } %>% dplyr::bind_rows()
     } %>% dplyr::bind_rows()
-  } %>% append(list(ref_metadata_cluster)) %>% dplyr::bind_rows() %>% dplyr::ungroup()
+  } %>% dplyr::bind_rows() %>% dplyr::distinct()
   
   return(metadata_subsample)
 }
+
+# subsampleGowerDistance_old <- function(metadata_project,
+#                                    level,
+#                                    clusters,
+#                                    ref_cluster = NULL,
+#                                    weights = NULL,
+#                                    n = 1){
+#   # Default weights for "RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex". RIN
+#   # is usually the only relevant one.
+#   if(any(class(weights) == "data.frame")){
+#     weights <- weights %>% deframe %>% .[c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex")] %>% unname
+#   }else  if(is.null(weights)){
+#     weights <- c(1, 0, 0, 0, 0)
+#   }
+#   
+#   # Extract the cluster with the least number of samples or the reference
+#   # cluster
+#   if(!is.null(ref_cluster)){
+#     ref_metadata_cluster = metadata_project %>%
+#       dplyr::filter(!!sym(level) == ref_cluster)
+#   }else{
+#     ref_metadata_cluster = metadata_project %>% 
+#       dplyr::filter(!!sym(level) %in% clusters) %>%
+#       dplyr::group_by(!!sym(level)) %>% 
+#       dplyr::mutate(n = n()) %>%
+#       dplyr::ungroup() %>%
+#       dplyr::slice_min(n)
+#     
+#     ref_cluster <- ref_metadata_cluster %>% 
+#       dplyr::pull(!!sym(level)) %>%
+#       unique()
+#   }
+#   
+#   # For every other cluster, extract the samples with the lowest Gower distance
+#   metadata_subsample <- foreach(i = seq_along(clusters)) %do%{
+#     cluster <- clusters[i]
+#     if(cluster == ref_cluster) return()
+#     
+#     cluster_samples <- metadata_project %>%
+#       dplyr::filter(!!sym(level) == cluster)
+#     
+#     # Loop for the number of samples to extract per reference sample
+#     cluster_subsamples <- foreach(j = 1:n) %do%{
+#       # Loop thorugh all the reference samples
+#       foreach(k = 1:nrow(ref_metadata_cluster)) %do%{
+#         # Prepare the metadata to measure the Gower Distance
+#         ref_sample <- ref_metadata_cluster[k, ] %>% prepareMetadata()
+#         cluster_samples_df <- cluster_samples %>% prepareMetadata()
+#         
+#         cluster_id <- StatMatch::gower.dist(ref_sample, cluster_samples_df, var.weights = weights) %>%
+#           `rownames<-`(rownames(ref_sample)) %>%
+#           `colnames<-`(rownames(cluster_samples_df)) %>% .[1, ] %>% which.min()
+#         
+#         # Extract the matched sample
+#         matched_sample <- cluster_samples[cluster_id, ]
+#         cluster_samples <- cluster_samples[-cluster_id, ]
+#         
+#         return(matched_sample)
+#       } %>% dplyr::bind_rows()
+#     } %>% dplyr::bind_rows()
+#   } %>% append(list(ref_metadata_cluster)) %>% dplyr::bind_rows() %>% dplyr::ungroup()
+#   
+#   return(metadata_subsample)
+# }
 
 prepareMetadata <- function(metadata, 
                             columns = c("Individual_ID", "RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex")){

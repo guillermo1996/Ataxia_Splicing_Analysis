@@ -72,7 +72,7 @@ u2_introns_path = "/home/grocamora/RytenLab-Research/Additional_files/major_intr
 
 # fasta_path = "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.dna.primary_assembly.fa"
 # gtf_path = "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
-gtf_path = "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf"
+gtf_path = "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v39.annotation.gtf"
 fasta_path = "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/GRCh38.primary_assembly.genome.fa"
 
 ## Script parameters

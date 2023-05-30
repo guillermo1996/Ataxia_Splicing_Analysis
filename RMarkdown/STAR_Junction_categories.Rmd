@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - STAR junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.2.2
+  affiliation: UCL - Version 1.3
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -109,17 +109,22 @@ sj_tab_path <- file.path(main_path, "samples/SJ_out_tab_files/")
 
 # Path to the gtf file to annotate the introns and the ENCODE blacklisted region
 #gtf_ensembl_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf")
-gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v43.annotation.gtf")
+gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v39.annotation.gtf")
 blacklist_path = file.path("/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed")
 
 # Load the metadata
 metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>% 
   dplyr::rowwise() %>%
   dplyr::mutate(Individual_ID = stringr::str_split(ID_anon, "_", simplify = T)[1]) %>%
-  dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1")))
+  dplyr::filter(!(Diagnosis %in% c("CANVAS", "AIFM1"))) %>%
+  dplyr::ungroup()
 ```
 
 ## Changelog {.tabset -}
+
+### v1.3 {-}
+
+* Changed the reference transcriptome to Gencode v39.
 
 ### v1.2 {-}
 
@@ -157,7 +162,7 @@ The main difference is that only junctions from chromosomes 1:22, X and Y are co
 Given that the annotation process is long, we only create the variable if it does not exists in disk.
 
 ```{r, echo = T}
-rse_jx_path <- file.path(main_path, "variables/rse_jx_gencode43.rds")
+rse_jx_path <- file.path(main_path, "variables/rse_jx_gencode39.rds")
 if(!file.exists(rse_jx_path)){
   rse_jx <- createRSE(sj_df, gtf_gencode_path, sample_info = metadata, sample_id_col = "Correct_sample")
   rse_jx %>% saveRDS(rse_jx_path)
@@ -212,17 +217,17 @@ annot_junc_df <- rowRanges(rse_jx)[, "type"] %>%
 annot_junc_prop_df <- annot_junc_df %>% 
   dplyr::group_by(sample_id, type) %>%
   dplyr::summarise(n_junc = n(), count = sum(count)) %>%
-  dplyr::left_join(colData(rse_jx) %>% 
-                     tibble::as_tibble(rownames = "sample_id") %>%
-                     dplyr::select(sample_id, total_reads),
-                   by = "sample_id") %>%
+  # dplyr::left_join(colData(rse_jx) %>% 
+  #                    tibble::as_tibble(rownames = "sample_id") %>%
+  #                    dplyr::select(sample_id, total_reads),
+  #                  by = "sample_id") %>%
   dplyr::group_by(sample_id) %>%
   dplyr::mutate(total_junc = sum(n_junc),
                 total_count = sum(count),
                 prop_junc = n_junc/total_junc,
-                prop_count = count/total_count,
-                prop_total_reads = count/total_reads) %>%
-  dplyr::select(-total_reads) %>%
+                prop_count = count/total_count) %>%
+  # dplyr::mutate(prop_total_reads = count/total_reads) %>%
+  # dplyr::select(-total_reads) %>%
   dplyr::ungroup() %>%
   # tidyr::pivot_longer(names_to = "metric", values_to = "value", cols = -c(type, sample_id)) %>%
   # tidyr::pivot_wider(names_from = "type", values_from = "value") %>%
@@ -423,17 +428,12 @@ annot_junc_red_df <- rowRanges(rse_jx)[, "type"] %>%
 annot_junc_prop_red_df <- annot_junc_red_df %>% 
   dplyr::group_by(sample_id, type) %>%
   dplyr::summarise(n_junc = n(), count = sum(count)) %>%
-  dplyr::left_join(colData(rse_jx) %>% 
-                     tibble::as_tibble(rownames = "sample_id") %>%
-                     dplyr::select(sample_id, total_reads),
-                   by = "sample_id") %>%
   dplyr::group_by(sample_id) %>%
   dplyr::mutate(total_junc = sum(n_junc),
                 total_count = sum(count),
                 prop_junc = n_junc/total_junc,
-                prop_count = count/total_count,
-                prop_total_reads = count/total_reads) %>%
-  dplyr::select(-total_reads) %>%
+                prop_count = count/total_count) %>%
+  dplyr::ungroup() %>%
   dplyr::left_join(colData(rse_jx) %>% 
                      tibble::as_tibble(rownames = "sample_id") %>%
                      dplyr::select(sample_id, Type, Diagnosis, AtaxiaSubtype, Region),

@@ -121,9 +121,11 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 
 ### v2.0 {-}
 
-* Updated the clusters to always compare the same number of samples between cases and controls.
+* Now, the clusters always compare the same number of samples between cases and controls. Procedure explained in methodology.
 
 * Added results for Level 2 (AtaxiaSubtype) and references.
+
+* Changed the reference transcriptome from Gencode v43 to Gencode v39.
 
 * Updated methodology.
 
