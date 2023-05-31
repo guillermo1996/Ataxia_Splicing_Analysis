@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq targeted gene level - Junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.2
+  affiliation: UCL - Version 1.3
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -118,7 +118,7 @@ regtools_path <- file.path("/home/grocamora/tools/regtools/build/")
 
 # Path to the gtf file to annotate the introns and the ENCODE blacklisted region
 gtf_ensembl_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf")
-gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v39.annotation.gtf")
+gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v38.annotation.gtf")
 blacklist_path = file.path("/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed")
 
 ## Load the metadata
@@ -129,6 +129,10 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 ```
 
 ## Changelog {.tabset -}
+
+### v1.3 {-}
+
+* Changed the reference transcriptome to Gencode v38.
 
 ### v1.2 {-}
 
@@ -246,7 +250,7 @@ all_reads_combined <- all_junc %>%
 
 ## Junction annotation
 
-Junctions are first filtered: (i) removing all junctions that overlap with the ENCODE blacklisted region and (ii) removing all junctions that are less than 25 bp long. Then, junctions are annotated using [dasper](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) function `junction_annot` and a reference transcriptome (GENCODE v39 in this report).
+Junctions are first filtered: (i) removing all junctions that overlap with the ENCODE blacklisted region and (ii) removing all junctions that are less than 25 bp long. Then, junctions are annotated using [dasper](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) function `junction_annot` and a reference transcriptome (GENCODE v38 in this report).
 
 Additionally, all junctions associated to more than one gene are removed as they are considered ambiguous.
 

@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - STAR junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.3
+  affiliation: UCL - Version 1.4
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -109,7 +109,7 @@ sj_tab_path <- file.path(main_path, "samples/SJ_out_tab_files/")
 
 # Path to the gtf file to annotate the introns and the ENCODE blacklisted region
 #gtf_ensembl_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf")
-gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v39.annotation.gtf")
+gtf_gencode_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v38.annotation.gtf")
 blacklist_path = file.path("/home/grocamora/RytenLab-Research/Additional_files/hg38-blacklist.v2.bed")
 
 # Load the metadata
@@ -121,6 +121,10 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 ```
 
 ## Changelog {.tabset -}
+
+### v1.4 {-}
+
+* Changed the reference transcriptome to Gencode v38.
 
 ### v1.3 {-}
 
@@ -162,7 +166,7 @@ The main difference is that only junctions from chromosomes 1:22, X and Y are co
 Given that the annotation process is long, we only create the variable if it does not exists in disk.
 
 ```{r, echo = T}
-rse_jx_path <- file.path(main_path, "variables/rse_jx_gencode39.rds")
+rse_jx_path <- file.path(main_path, "variables/rse_jx_gencode38.rds")
 if(!file.exists(rse_jx_path)){
   rse_jx <- createRSE(sj_df, gtf_gencode_path, sample_info = metadata, sample_id_col = "Correct_sample")
   rse_jx %>% saveRDS(rse_jx_path)

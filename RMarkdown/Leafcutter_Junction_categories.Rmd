@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - Leafcutter junction category distributions"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 1.2
+  affiliation: UCL - Version 1.3
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -91,6 +91,10 @@ This report is meant to be used as a template. As such, the different sections w
 
 ## Changelog {.tabset -}
 
+### v1.3 {-}
+
+* Changed the reference transcriptome to Gencode v38.
+
 ### v1.2 {-}
 
 * Changed the reference transcriptome to Gencode v39.
@@ -101,7 +105,7 @@ To annotate the junctions, we need to set the following variables:
 
 * `use_strand`: whether to use the strand information for the Leafcutter clusters' ID.
 
-* `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v39 is employed (also tested with ENSEMBL v105).
+* `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v38 is employed (also tested with ENSEMBL v105).
 
 ```{r, echo = T}
 # For the Ataxia dataset, the cluster IDs don't have a valid strand. Set to FALSE.
@@ -109,7 +113,7 @@ use_strand <- F
 
 # Path to the gtf file to annotate the introns
 #gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
-gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v39.annotation.gtf"
+gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v38.annotation.gtf"
 ```
 
 ## Loading leafcutter results
@@ -131,7 +135,7 @@ The junctions are annotated using the function `junction_annot` from David Zhang
 
 ```{r, echo = T}
 # Path to where the annotated intron list will be stored in disk.
-annotated_path <- file.path(main_path, "variables/annotated_gencode39.rds")
+annotated_path <- file.path(main_path, "variables/annotated_gencode38.rds")
 
 # If file already exists, do not execute the annotation process.
 if(!file.exists(annotated_path)){

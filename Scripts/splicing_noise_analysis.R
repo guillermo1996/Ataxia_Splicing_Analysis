@@ -72,7 +72,7 @@ u2_introns_path = "/home/grocamora/RytenLab-Research/Additional_files/major_intr
 
 # fasta_path = "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.dna.primary_assembly.fa"
 # gtf_path = "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
-gtf_path = "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v39.annotation.gtf"
+gtf_path = "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v38.annotation.gtf"
 fasta_path = "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/GRCh38.primary_assembly.genome.fa"
 
 ## Script parameters
@@ -99,7 +99,6 @@ all_reads_combined <- junctionReading(metadata = metadata,
                                       output_path = results_path)
 
 ## Junction annotation ----
-# Only ENSEMBL gtf are supported as of 19/05/2023
 annotated_SR_details <- junctionAnnotation(all_reads_combined = all_reads_combined,
                                            main_samples_path = main_samples_path,
                                            blacklist_path = blacklist_path,

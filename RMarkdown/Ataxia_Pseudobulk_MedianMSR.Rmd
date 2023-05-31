@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - Median MSR Analysis"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 2.0
+  affiliation: UCL - Version 2.1
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -116,6 +116,10 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 
 ## Changelog {.tabset -}
 
+### v2.1 {-}
+
+* Changed the reference transcriptome to Gencode v38.
+
 ### v2.0 {-}
 
 * Now, the clusters always compare the same number of samples between cases and controls. Procedure explained in methodology.
@@ -140,7 +144,7 @@ For every available BAM file to study, we apply the following steps:
 
 2. **Junction extraction**: all junctions are extracted using [`regtools junction extract`](https://regtools.readthedocs.io/en/latest/commands/junctions-extract/) after [sorting](http://www.htslib.org/doc/samtools-sort.html) and [indexing](http://www.htslib.org/doc/samtools-index.html) with [`samtools`](http://www.htslib.org/). A file is created for each BAM file in BED12 format.
 
-3. **Junction annotation**: the junctions are read from the previously created files and merged into a single dataframe of read junctions. We also register the number of reads of each junction in every sample. The junctions located within the ENCODE blacklisted regions v2 are removed. The `junction_annot()` function from the package [`dasper`](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) is used to annotate the junctions to the Gencode v39 reference transcriptome. All junctions not classified as either `novel_donor`, `novel_acceptor` or `annotated` are ignored. We also remove all junctions smaller than 25bp (base pairs) and annotated introns that are ambiguously assigned to more than one gene.
+3. **Junction annotation**: the junctions are read from the previously created files and merged into a single dataframe of read junctions. We also register the number of reads of each junction in every sample. The junctions located within the ENCODE blacklisted regions v2 are removed. The `junction_annot()` function from the package [`dasper`](http://www.bioconductor.org/packages/release/bioc/html/dasper.html) is used to annotate the junctions to the Gencode v38 reference transcriptome. All junctions not classified as either `novel_donor`, `novel_acceptor` or `annotated` are ignored. We also remove all junctions smaller than 25bp (base pairs) and annotated introns that are ambiguously assigned to more than one gene.
 
 4. **Junction pairing**: by looking for overlaps between the `novel` junctions and the `annotated` junctions for each sample, we measure the distance in bp between the novel and reference splice site. The annotated introns that are never associated to a novel junction are considered a `never misspliced junctions`.
 
