@@ -30,13 +30,13 @@ Within this repository, the following structure was followed:
 
 * **[R](R/)**: helper functions employed across all the relevant scripts and RMarkdowns.
 
-* **RMarkdown**: directory containing all the reports for the different studies. Provided are both the `.Rmd` and their `.html` output, which can be viewed via [github pages](https://guillermo1996.github.io/Ataxia_Splicing_Analysis/).
+* **[RMarkdown](RMarkdown/)**: directory containing all the reports for the different studies. Provided are both the `.Rmd` and their `.html` output, which can be viewed via [github pages](https://guillermo1996.github.io/Ataxia_Splicing_Analysis/).
 
-* **Scripts**: scripts employed for the different analyses:
+* **[Scripts](Scripts/)**: scripts employed for the different analyses:
 
-  - **download_and_extraction.R**: script to download the BAM files from AWS S3. It requires login credentials which must be manually updated every 12 hours.
+  - **[download_and_extraction.R](Scripts/download_and_extraction.R)**: script to download the BAM files from AWS S3. It requires login credentials which must be manually updated every 12 hours. Other helper scripts related to the credential generation can also be found.
   
-  - **splicing_noise_analysis.R**: main script to run the splicing noise analysis.
+  - **[splicing_noise_analysis.R](Scripts/splicing_noise_analysis.R)**: main script to run the splicing noise analysis.
   
-  - **splicing_analysis_levels**: directory containing the scripts to finalize the splicing noise analysis for each of the levels and tissues studied.
+  - **[splicing_analysis_levels](Scritps/splicing_analysis_levels**: directory containing the scripts to finalize the splicing noise analysis for each of the levels and tissues studied.
 
