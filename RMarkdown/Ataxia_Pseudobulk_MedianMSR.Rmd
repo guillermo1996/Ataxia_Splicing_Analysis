@@ -2,7 +2,7 @@
 title: "Ataxia RNAseq - Median MSR Analysis"
 author: 
 - name: "Guillermo Rocamora Pérez"
-  affiliation: UCL - Version 2.1
+  affiliation: UCL - Version 2.2
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
@@ -116,6 +116,10 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 
 ## Changelog {.tabset -}
 
+### v2.2 {-}
+
+* Added section "Additional studies" with a study about the influence of the number of samples to the results of the Wilcoxon paired-signed rank tests.
+
 ### v2.1 {-}
 
 * Changed the reference transcriptome to Gencode v38.
@@ -170,7 +174,7 @@ Three different level of studies were studied in this report, and always differe
 
 ## Subsampling
 
-Studies about the relationship in mis-splicing ratio's median and the number of samples pseudobulked showed a clear correlation between the two. In order to avoid this effect in the comparisons between cases and controls, we decided to subsample the majority class until both classes have the same number of samples. The subsampling was performed so that the weighted Gower distance between the case samples and the control samples was minimized.
+Studies about the relationship in mis-splicing ratio's median and the number of samples pseudobulked ([reference](#addS_wilcoxon)) showed a clear correlation between the two. In order to avoid this effect in the comparisons between cases and controls, we decided to subsample the majority class until both classes have the same number of samples. The subsampling was performed so that the weighted Gower distance between the case samples and the control samples was minimized.
 
 For datasets with both quantitative (i.e. RIN) and categorical (i.e. Brain bank) variables, also called mixed datasets, Gower's distance is a common measurement of similarity between any two samples [@Hummel2017]. The similarity between samples can be defined as:
 
@@ -188,11 +192,11 @@ We decided to apply a weighting to the variables in order to increase the releva
 
 The subsampling process was the following:
 
-1. *Variable weights*: first, we divided the samples by tissue. Then, for each sample, we extract the number of reads associated to both annotated and novel junctions. Using a linear model to predict this number of reads, we measure the variance explained by each of the main covariates that will be employed  in subsampling: RIN, PMI, Age at death, Brain bank and sex. The percentage of variance explained by each covariate will be considered as the weight in the next step.
+1. *Variable weights*: first, we divided the samples by tissue. Then, for each sample, we extract the number of reads associated to both annotated and novel junctions. Using a linear model to predict this number of reads, we measured the variance explained by each of the main covariates that will be employed  in subsampling: RIN, PMI, Age at death, Brain bank and sex. The percentage of variance explained by each covariate will be considered as the weight in the next step.
 
-2. *Gower's distance between samples*: for each the minority class sample, the most similar majority class sample was selected without repetition (i.e. once two samples were assigned together, none of them can be selected again). Thus, the same number of samples between the two classes were obtained.
+2. *Gower's distance between samples*: for each minority class sample, the most similar majority class sample was selected without repetition (i.e. once two samples were assigned together, none of them can be selected again). Thus, the same number of samples between the two classes were obtained.
 
-3. *Wilcoxon test*: between the two sets of samples, a Wilcoxon test is executed to test whether there are significant differences in the RIN medians. If significant differences are found, some extra restriction is applied to any of the sets. For example, for Cerebellum Level 1 study, control samples with RIN higher than 7 needed to be removed to ensure non-significant differences in the median. 
+3. *Wilcoxon test*: between the two sets of samples, a Wilcoxon test was executed to test whether there are significant differences in the RIN medians. If significant differences are found, some additional restrictions are applied to any of the sets. For example, for Cerebellum Level 1 study, control samples with RIN higher than 7 needed to be removed to ensure non-significant differences in the median. 
 
 All studies will be presented with the samples employed for both classes and Wilcoxon test results. The obtained weights are the following:
 
@@ -508,7 +512,6 @@ wilcox_l3 <- foreach(i = seq_along(tissues)) %do%{
   dplyr::rowwise() %>%
   dplyr::mutate(p.value.bonferroni = min(1, p.value*nrow(.))) %>%
   dplyr::ungroup()
-  
 ```
 
 The studies for diagnosis vs. controls for each tissue report the following effect sizes after the Wilcoxon paired signed-rank test:
@@ -620,53 +623,84 @@ ggplot(all_metadata %>% dplyr::filter(Region == "Frontal"),
         strip.background = element_rect(color="black", linewidth=0.5, linetype="solid"))
 ```
 
-<!-- # Additional studies -->
+# Additional studies
 
-<!-- ## Effects of number of samples in Wilcoxon tests {#addS_wilcoxon} -->
+## Effects of number of samples in Wilcoxon tests {#addS_wilcoxon}
 
-<!-- Previous results (not shown in this report) showed us that there seems to be a relationship between the number of samples being clustered and the median MSR values. This result is to be expected if we analyse the situation. We have already proven in the past that the number of samples increase the number of novel junctions, which increases the likelihood of a mis-splicing event to be found for any particular intron. As such, it is expected that more reference introns have a different than zero MSR value, which would lead to an increase in the median MSR. The reduction in the proportion of MSR = 0 reference introns was observed for both tissues and splice sites in control samples: -->
+Previous results (not shown in this report) showed us that there seems to be a relationship between the number of samples being clustered and the median MSR values. This result is to be expected if we analyse the situation. We have already proven in the past that the number of samples increase the number of novel junctions, which increases the likelihood of a mis-splicing event to be found for any particular intron. As such, it is expected that more reference introns have a different than zero MSR value, which would lead to an increase in the median MSR. 
 
-<!-- Given the results by diagnosis, it seems that there is a relationship between the number of samples being clustered and the median MSR values. This result is to be expected if we analyse the situation. We have already proven in the past that the number of samples increase the number of novel junctions, which increases the likelihood of a mis-splicing event to be found for any particular intron. As such, it is expected that more reference introns have a different than zero MSR value, which would lead to an increase in the median MSR. The reduction in the proportion of MSR = 0 reference introns was observed for both tissues and splice sites in control samples: -->
+The reduction in the proportion of MSR = 0 reference introns was observed for both tissues and splice sites in control samples:
 
-<!-- ```{r, fig.height=4, fig.width=7.2} -->
-<!-- stats_results <- readRDS(here::here("tests/Control_vs_Control-1vsN/stats_results.rds")) -->
+```{r, fig.height=4, fig.width=7.2}
+tissues = c("Cerebellum", "Frontal")
+zero_prop_N <- foreach(i = seq_along(tissues)) %do%{
+  tissue = tissues[i]
+  tissue_path <- file.path(results_path, paste0(tissue, "_sample_number"))
+  
+  zero_prop_N_paths <- list.files(tissue_path, pattern = "^zero_prop", recursive = T)
+  foreach(j = seq_along(zero_prop_N_paths)) %do%{
+    N_path <- zero_prop_N_paths[j]
+    
+    N <- str_split_fixed(N_path, "/", 2)[1] %>% substr(2, 2) %>% as.numeric
+    
+    zero_prop <- readRDS(file.path(tissue_path, N_path)) %>%
+      dplyr::mutate(Tissue = tissue, N = N)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows()
 
-<!-- stats_results %>% -->
-<!--   dplyr::mutate(N = as.integer(N)*3) %>% -->
-<!--   tidyr::pivot_longer(cols = Case_zero_prop:Control_nonZeroMean_MSR) %>% -->
-<!--   dplyr::filter(name == "Control_zero_prop") %>% -->
-<!--   ggplot(aes(x = N, y = value, color = splice_site, group = splice_site)) + -->
-<!--   geom_point() + -->
-<!--   geom_line() +  -->
-<!--   scale_x_continuous(breaks = seq(3, 21, 3)) + -->
-<!--   viridis::scale_color_viridis(option = "viridis", discrete = T, begin = 0.25, end = 0.75, name = "Splice site:") + -->
-<!--   labs(x = "Number of samples in cluster", y = "MSR = 0 Proportion") + -->
-<!--   ggtitle("Proportion of MSR = 0", subtitle = "Control samples") +  -->
-<!--   facet_wrap(vars(tissue), scales = "free_x") + -->
-<!--   custom_gg_theme_subtitle -->
-<!-- ``` -->
+zero_prop_N %>%
+  dplyr::mutate(N = N*3) %>%
+  tidyr::pivot_longer(cols = Case_zero_prop:Control_nonZeroMean_MSR) %>%
+  dplyr::filter(name == "Control_zero_prop") %>%
+  ggplot(aes(x = N, y = value, color = splice_site, group = splice_site)) + 
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = seq(3, 21, 3)) +
+  viridis::scale_color_viridis(option = "viridis", discrete = T, begin = 0.25, end = 0.75, name = "Splice site:") +
+  labs(x = "Number of samples in cluster", y = "MSR = 0 Proportion") +
+  ggtitle("Proportion of MSR = 0", subtitle = "Control samples") +
+  facet_wrap(vars(Tissue), scales = "free_x") +
+  custom_gg_theme_subtitle
+```
 
-<!-- To expand on this idea, I tested a Wilcoxon paired signed-rank test between different control samples. We will call cluster A as the one constructed from three control samples: the highest RIN, the lowest RIN and the median RIN. Then, different clusters will be generated based on different number of samples per sample in cluster A. Let's call cluster B1 to the one generated with three samples in total, selected to to minimize the weighed Gower's dissimilarity index to each of the case samples of cluster A. Cluster B2 then would be created with two samples per sample in cluster A (i.e. 6 samples in total). These will be called clusters B. -->
+To expand on this idea, we tested a Wilcoxon paired signed-rank test between different control samples. We will call cluster A as the one constructed from three control samples: the highest RIN, the lowest RIN and the median RIN. Then, different clusters will be generated based on different number of samples per each sample in cluster A. Let's call cluster B1 to the one generated with three samples in total, selected to to minimize the weighed Gower's dissimilarity index to each of the case samples of cluster A. Cluster B2 then would be created with two samples per sample in cluster A (i.e. 6 samples in total). These will be called clusters B.
 
-<!-- Once we have clusters A and B, we execute a Wilcoxon test to compare the median MSR between both clusters and splice sites. Positive results would mean a higher MSR median in cluster A, while negative results represents the opposite. Results are shown in the following figure: -->
+Once we have clusters A and B, we execute a Wilcoxon test to compare the median MSR between both clusters and splice sites. Positive results would mean a higher MSR median in cluster A, while negative results represents the opposite. Results are shown in the following figure:
 
-<!-- ```{r, fig.height=4, fig.width=7.2} -->
-<!-- wilcox_results_1vsN <- readRDS(here::here("tests/Control_vs_Control-1vsN/wilcox_results.rds")) -->
+```{r, fig.height=4, fig.width=7.2}
+tissues = c("Cerebellum", "Frontal")
+wilcox_N <- foreach(i = seq_along(tissues)) %do%{
+  tissue = tissues[i]
+  tissue_path <- file.path(results_path, paste0(tissue, "_sample_number"))
+  
+  wilcox_N_paths <- list.files(tissue_path, pattern = "^wilcox", recursive = T)
+  foreach(j = seq_along(wilcox_N_paths)) %do%{
+    N_path <- wilcox_N_paths[j]
+    
+    N <- str_split_fixed(N_path, "/", 2)[1] %>% substr(2, 2) %>% as.numeric
+    
+    wilcox_test <- readRDS(file.path(tissue_path, N_path)) %>%
+      dplyr::mutate(Tissue = tissue, N = N)
+  } %>% dplyr::bind_rows()
+} %>% dplyr::bind_rows() %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(p.value.bonferroni = min(1, p.value*nrow(.))) %>%
+  dplyr::ungroup()
 
-<!-- wilcox_results_1vsN %>%  -->
-<!--   dplyr::filter(p.value <= 0.05/nrow(.)) %>% -->
-<!--   ggplot(aes(x = N, y = effect_size, color = splice_site, group = splice_site)) +  -->
-<!--   geom_point() + -->
-<!--   geom_line() + -->
-<!--   viridis::scale_color_viridis(option = "viridis", discrete = T,  -->
-<!--                                begin = 0.20, end = 0.75, name = "Splice site:") + -->
-<!--   labs(x = "Second cluster samples per initial cluster sample", y = "Effect size") + -->
-<!--   ggtitle("Influence of effect size by number of samples") +  -->
-<!--   ggforce::facet_row(vars(tissue), scales = "free_x") + -->
-<!--   custom_gg_theme -->
-<!-- ``` -->
+wilcox_N %>%
+  dplyr::mutate(N = N*3) %>%
+  ggplot(aes(x = N, y = effect_size, color = splice_site, group = splice_site)) +
+  geom_point() +
+  geom_line() +
+  viridis::scale_color_viridis(option = "viridis", discrete = T,
+                               begin = 0.20, end = 0.75, name = "Splice site:") +
+  labs(x = "Second cluster samples per initial cluster sample", y = "Effect size") +
+  ggtitle("Influence of effect size by number of samples") +
+  ggforce::facet_row(vars(Tissue), scales = "free_x") +
+  custom_gg_theme
+```
 
-<!-- As observed previously, the effect size decreases as we increase the samples in cluster B. Thus, in the studies in which the number of control samples is bigger than the number off case samples, it is expected that the Wilcoxon tests report a decrease in the median MSR values. -->
+As expected, the effect size decreases as we increase the samples in cluster B. Thus, in the studies in which the number of control samples is bigger than the number off case samples, it is expected that the Wilcoxon tests report a decrease in the median MSR values between case and control samples.
 
 # Session info
 

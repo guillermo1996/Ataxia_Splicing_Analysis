@@ -1,6 +1,6 @@
 #' Subsamples by Gower distance with weights
 #'
-#' Given the metadata of the samples, it subsample the majority class to match
+#' Given the metadata of the samples, it subsamples the majority class to match
 #' in number of samples the minority class. The subsampling is done by matching
 #' samples together in order to minimize the Gower distance between the two
 #' clusters.
@@ -28,6 +28,18 @@ subsampleGowerDistance <- function(metadata_project,
                                    ref_cluster = NULL,
                                    weights = NULL,
                                    n = 1){
+  # Return if input metadata is already balanced
+  unique_counts <- metadata_project %>% 
+    dplyr::filter(!!sym(level) %in% clusters) %>% 
+    dplyr::pull(!!sym(level)) %>%
+    table() %>%
+    unique() %>%
+    length()
+  if(unique_counts == 1){
+    logger::log_info("\t Same number of samples in both classes. No subsample needed.")
+    return(metadata_project)
+  }
+  
   # Default weights for "RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex". RIN
   # is usually the only relevant one.
   if(any(class(weights) == "data.frame")){
@@ -55,17 +67,60 @@ subsampleGowerDistance <- function(metadata_project,
       unique()
   }
   
+  ## ######### Subsample technique ############
+  ##
+  ## The subsample steps are:
+  ##
+  ## 1. Loop through every cluster. Ignore the reference cluster (cluster with
+  ## the minimum number of samples).
+  ##
+  ## 2. Get the cluster metadata. Prepare the metadata to apply the Gower
+  ## distance function by calling "prepareMetadata()". It is important to modify
+  ## that function so that the order of covariates is the appropriate. In this
+  ## case, the order is: RIN, PMI, Brain.Bank, Age_of_death and Sex. The column
+  ## "Individual_ID" is employed as the rownames.
+  ##
+  ## 3. Loop for the variable "n", which represents how many samples from the
+  ## majority class we want for each of the minority class. Defaults to n = 1.
+  ##
+  ## 4. Get the reference cluster metadata and execute the "prepareMetadata()"
+  ## function too.
+  ##
+  ## 5. Loop through every sample in the reference cluster.
+  ##
+  ## 6. In each iteration, measure the weighted Gower distance between all
+  ## reference samples and cluster samples. Pair the samples with the minimum
+  ## distance between them and remove both of them from their respective
+  ## metadata dataframe (so that they are not selected again in the next
+  ## iteration). After the loop is executed, we should have a matched samples
+  ## for every reference sample. Since we are looping through "n" (step 3), we
+  ## will repeat the process, matching a new set of cluster samples for every
+  ## reference sample without repeating the previously matched.
+  ##
+  ## 7. Each loop returns the metadata of the paired samples. In the end, we
+  ## should have a dataframe with the metadata of all samples and their match.
+  ## If "n" is different from 1, the reference samples will be repeated. We
+  ## apply a "dplyr::distinct()" to remove them.
+  
+  ## Step 1. Loop through every cluster.
   metadata_subsample <- foreach(i = seq_along(clusters)) %do%{
     cluster <- clusters[i]
     if(cluster == ref_cluster) return()
     
+    ## Step 2. Create the cluster metadata and prepare the dataframe.
     cluster_metadata_samples <- metadata_project %>% dplyr::filter(!!sym(level) == cluster)
     cluster_samples <- cluster_metadata_samples %>% prepareMetadata()
     
+    ## Step 3. Loop through "n".
     foreach(j = 1:n) %do%{
+      ## Step 4. Create the reference metadata and prepare the dataframe.
       ref_samples <- ref_metadata_cluster %>% prepareMetadata()
       
+      ## Step 5. Loop through every reference sample.
       foreach(k = 1:nrow(ref_metadata_cluster)) %do%{
+        
+        ## Step 6. Extract the distance between all reference and cluster
+        ## samples. Remove the pairs from their respective dataframes.
         distances_df <- StatMatch::gower.dist(ref_samples, cluster_samples, var.weights = weights) %>%
           `rownames<-`(rownames(ref_samples)) %>%
           `colnames<-`(rownames(cluster_samples))
@@ -152,6 +207,9 @@ subsampleGowerDistance <- function(metadata_project,
 
 #' Prepares the metadata for the Gower distance calculation.
 #'
+#' The first element in the argument "columns" will be used as rownames of the
+#' returned dataframe.
+#'
 #' @param metadata Dataframe containing all the metadata.
 #' @param columns List of character vectors, columns and order to use for the
 #'   Gower distance calculation.
@@ -164,7 +222,7 @@ prepareMetadata <- function(metadata,
   metadata %>% 
     dplyr::select(all_of(columns)) %>%
     as.data.frame() %>%
-    tibble::column_to_rownames("Individual_ID")
+    tibble::column_to_rownames(var = columns[1])
 }
 
 generateSampleJunctionInformation <- function(results_path, output_file = ""){
