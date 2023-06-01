@@ -1,0 +1,2 @@
+# Remove .hmtl files from language statistics
+*.html linguist-detectable=false
