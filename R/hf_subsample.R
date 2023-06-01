@@ -23,11 +23,11 @@
 #' @return dataframe containing the metadata of the samples selected.
 #' @export
 subsampleGowerDistance <- function(metadata_project,
-                                       level,
-                                       clusters,
-                                       ref_cluster = NULL,
-                                       weights = NULL,
-                                       n = 1){
+                                   level,
+                                   clusters,
+                                   ref_cluster = NULL,
+                                   weights = NULL,
+                                   n = 1){
   # Default weights for "RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex". RIN
   # is usually the only relevant one.
   if(any(class(weights) == "data.frame")){

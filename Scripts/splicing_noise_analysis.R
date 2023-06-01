@@ -26,6 +26,10 @@
 ## approaches. In this script, a total of 6 analyses (2 tissues in three
 ## different levels) are studied.
 ##
+## Additonally, two other analyses are carried out to study the effect of the
+## number of samples in the median MSR results. It is recommended to not run
+## these last two analyses.
+##
 ## Please contact guillermorocamora@gmail.com for further assistance.
 ## _________________________________________________
 
@@ -139,3 +143,7 @@ source(here::here("Scripts/splicing_analysis_levels/Frontal_Level_2.R"))
 ## Level 3 (Diagnosis) ----
 source(here::here("Scripts/splicing_analysis_levels/Cerebellum_Level_3.R"))
 source(here::here("Scripts/splicing_analysis_levels/Frontal_Level_3.R"))
+
+## Test effect of number of samples (Section "Additional Research" in "Median MSR" report) ----
+source(here::here("Scripts/splicing_analysis_levels/Cerebellum_number_samples.R"))
+source(here::here("Scripts/splicing_analysis_levels/Frontal_number_samples.R"))
