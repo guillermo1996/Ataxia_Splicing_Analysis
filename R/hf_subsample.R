@@ -1,3 +1,27 @@
+#' Subsamples by Gower distance with weights
+#'
+#' Given the metadata of the samples, it subsample the majority class to match
+#' in number of samples the minority class. The subsampling is done by matching
+#' samples together in order to minimize the Gower distance between the two
+#' clusters.
+#'
+#' @param metadata_project Dataframe containing all the metadata.
+#' @param level Character vector, field/column in the metadata dataframe to
+#'   split the samples in clusters.
+#' @param clusters List of character vector, the clusters that are being
+#'   studied. Must be named after the field specific in the "level" argument.
+#' @param ref_cluster Character vector, cluster that will be used as reference
+#'   to match samples against. If not provided, defaults to the minority class.
+#' @param weights Numeric vector, weights associated to each covariate. By
+#'   default, only RIN is accounted for. Weights must be specific in order:
+#'   c(RIN, PMI, BrainBank, AgeOfDeath, Sex). It can also accepts a dataframe of
+#'   percentage of covariance explained as the one output by
+#'   \code{getVarianceDf}.
+#' @param n Numeric, number of samples of the majority class to use per samples
+#'   in the minority class. Recommended to leave as default. Defaults to 1.
+#'
+#' @return dataframe containing the metadata of the samples selected.
+#' @export
 subsampleGowerDistance <- function(metadata_project,
                                        level,
                                        clusters,
@@ -126,6 +150,15 @@ subsampleGowerDistance <- function(metadata_project,
 #   return(metadata_subsample)
 # }
 
+#' Prepares the metadata for the Gower distance calculation.
+#'
+#' @param metadata Dataframe containing all the metadata.
+#' @param columns List of character vectors, columns and order to use for the
+#'   Gower distance calculation.
+#'
+#' @return dataframe with the metadata preparared for Gower distance
+#'   calculation.
+#' @export
 prepareMetadata <- function(metadata, 
                             columns = c("Individual_ID", "RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex")){
   metadata %>% 

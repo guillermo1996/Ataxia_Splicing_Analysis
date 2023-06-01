@@ -22,7 +22,9 @@ extractReadDepthMultiQC <- function(metadata, multiqc_path){
 #' Loads the reference genome into memory (ENSEMBL)
 #'
 #' The different versions can be downloaded
-#' \href{http://ftp.ensembl.org/pub/release-105/gtf/homo_sapiens/}{here}.
+#' \href{http://ftp.ensembl.org/pub/release-105/gtf/homo_sapiens/}{here}. If the
+#' reference transcriptome is not from ENSEBML, it tries to use the
+#' \code{loadGTF} function to load a generic transcriptome.
 #'
 #' @param gtf_path path to the reference genome .gtf file.
 #'
@@ -51,7 +53,7 @@ loadEdb <- function(gtf_path) {
 #'
 #' @param gtf_path path to the reference genome .gtf file.
 #'
-#' @return TxDb-class object
+#' @return TxDb-class object.
 #' @export
 loadGTF <- function(gtf_path){
   ref <- GenomicFeatures::makeTxDbFromGFF(gtf_path)
@@ -60,6 +62,18 @@ loadGTF <- function(gtf_path){
   return(ref)
 }
 
+#' Check "SYMBOL" in reference transcriptome
+#'
+#' Checks if the column "SYMBOL" can be found in the reference transcriptomes.
+#' If available, we assume that other useful information is also provided (like
+#' the transcripts biotype) and provide additional information to the generated
+#' DBs. If not, only the basic mis-splicing ratio calculation is executed in the
+#' script.
+#'
+#' @param edb reference transcriptome from \code{loadEdb} or \code{loadGTF}.
+#'
+#' @return Boolean, whether the reference transcriptome has the column "SYMBOL"
+#' @export
 isGeneSymbolAvailable <- function(edb){
   return("SYMBOL" %in% AnnotationDbi::columns(edb))
 }
@@ -85,6 +99,18 @@ loadEncodeBlacklist <- function(blacklist_path) {
   return(encode_blacklist_hg38)
 }
 
+#' Checks Fasta seqnames style
+#'
+#' Using samtools faidx, it tests if the "chr" characters are written in the
+#' seqnames of the Fasta file. Different Fasta files have different standards,
+#' and the function \code{generateMaxEntScore} requires to know the style.
+#'
+#' @param fasta_path Path to the fasta .fa file for the reference genome.
+#' @param samtools_path Path to the samtools executable. Can be left empty if
+#'   samtools is in default PATH.
+#'
+#' @return Boolean, whether the Fasta file have "chr" in the seqnames.
+#' @export 
 isFastaSeqnamesStyleNCBI <- function(fasta_path,
                                      samtools_path){
   fai_path <- paste0(fasta_path, ".fai")

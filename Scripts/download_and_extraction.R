@@ -61,6 +61,8 @@ metadata_path <- file.path("/home/grocamora/Core_Projects/Ataxia_Splicing_Analys
 credentials_path <- file.path("/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/variables/credentials/role_credentials.json")
 
 dir.create(coverage_bam_files_path, recursive = T, showWarnings = F)
+dir.create(backup_samples_path, recursive = T, showWarnings = F)
+dir.create(main_samples_path, recursive = T, showWarnings = F)
 
 ## Script parameters
 samtools_threads <- 2

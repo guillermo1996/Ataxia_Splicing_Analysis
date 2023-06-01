@@ -1,3 +1,28 @@
+## _________________________________________________
+##
+## Helper Functions: Graphs and Themes
+##
+## Aim: Include in one single file the functions and variables needed to bring a
+## consistent theme to the graphs used in the analysis.
+##
+## Author: Mr. Guillermo Rocamora Pérez
+##
+## Date Created: 31/50/2023
+##
+## Copyright (c) Guillermo Rocamora Pérez, 2023
+##
+## Email: guillermorocamora@gmail.com
+## _________________________________________________
+##
+## Notes:
+##
+## Many themes will be further modified per graph as required by the situation.
+## This script includes only a guideline on the themes to use and other
+## variables required to properly run the graphs.
+##
+## Please contact guillermorocamora@gmail.com for further assistance.
+## _________________________________________________
+
 custom_gg_theme <- theme(plot.title = element_text(size = 14, face = "bold"),
                          panel.border = ggplot2::element_rect(colour = "black", fill = NA, linewidth = 1),
                          axis.text.x = ggplot2::element_text(color = "black", size = 9, angle = 0, hjust = 0.5),

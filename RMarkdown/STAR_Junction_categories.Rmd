@@ -105,7 +105,7 @@ Three different studies will be presented: disease status (Level 1), ataxia subt
 # Paths
 metadata_path <- file.path(main_path, "metadata/metadata.csv")
 multiqc_path <- file.path(main_path, "metadata/multiqc_rseqc_read_distribution.txt")
-sj_tab_path <- file.path(main_path, "samples/SJ_out_tab_files/")
+sj_tab_path <- file.path(main_path, "data/SJ_out_tab_files/")
 
 # Path to the gtf file to annotate the introns and the ENCODE blacklisted region
 #gtf_ensembl_path <- file.path("/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf")

@@ -17,6 +17,7 @@
 #' @param overwrite Whether to overwrite previously generated results from the
 #'   function. If set to FALSE and 'rw_disk' is set to TRUE, the function looks
 #'   for the files in memory and loads them if possible. By default, FALSE.
+#' @param output_path Character vector, path to where to store the results.
 #'
 #' @return Data.frame containing every junction found in all samples. The
 #'   dataframe will contain information about the junction and the reads of that

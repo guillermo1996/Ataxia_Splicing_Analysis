@@ -31,6 +31,7 @@
 #' @param overwrite Whether to overwrite previously generated results from the
 #'   function. If set to FALSE and 'rw_disk' is set to TRUE, the function looks
 #'   for the files in memory and loads them if possible. By default, FALSE.
+#' @param output_path Character vector, path to where to store the results.
 #'
 #' @return Dataframe containing all the junctions with their relevant
 #'   information annotated.
@@ -228,7 +229,7 @@ removeAmbiguousGenes <- function(input_SR_details) {
 #'   be left empty if bedtools is in default PATH.
 #' @param samtools_path Path to the samtools executable. Can be left empty if
 #'   samtools is in default PATH.
-#' @param fasta_path Path to the fasta fa file for the reference genome.
+#' @param fasta_path Path to the fasta .fa file for the reference genome.
 #' @param fordownload_path Path to the MaxEntScan pearl scripts. Can be
 #'   downloaded from
 #'   \href{http://hollywood.mit.edu/burgelab/maxent/download/}{here}.

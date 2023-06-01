@@ -121,7 +121,7 @@ gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.
 Next, the leafcutter results are loaded from disk. Three different studies will be presented in this report: overall (Level 1), subtypes (Level 2) and diagnoses (Level 3). Types 2 and 3 will be further split by tissues.
 
 ```{r, echo = T}
-path_to_results <- file.path(main_path, "summary_results/")
+path_to_results <- file.path(main_path, "data/leafcutter_results/")
 leafcutter_list <-  setNames(list(
   readRDS(file.path(path_to_results, "case_v_control_leafcutter_ds.Rds")),
   readRDS(file.path(path_to_results, "subtypes_v_control_leafcutter_ds.Rds")),

@@ -10,7 +10,7 @@ extractCoverage <- function(file_path,
     
     ## If sample is already found in metadata, then we skip the process
     found_sample_genes <- all_cov_df[all_cov_df$sample_correct_name == sample_correct_name, ] %>% 
-      pull(gene_to_filter) %>% 
+      dplyr::pull(gene_to_filter) %>% 
       sort()
     if(isTRUE(all.equal(found_sample_genes, ataxia_genes$gene_name %>% sort))){
       logger::log_info("\t\t All ataxia genes already found in the previous metadata. Skipping the process.")
@@ -76,8 +76,12 @@ extractCoverage <- function(file_path,
   invisible(gc())
 }
 
+#' Load ataxia genes information from reference transcriptome.
+#'
+#' @return dataframe with ataxia genes information.
+#' @export
 loadAtaxiaGenes <- function(){
-  gtf <- rtracklayer::readGFF("/home/zchen/gtf/gencode.v38.annotation.gtf.gz")
+  gtf <- rtracklayer::readGFF("/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v38.annotation.gtf.gz")
   
   # Mendelian genes for ataxia samples genomic location:  
   ataxia_genes <- gtf %>% 
