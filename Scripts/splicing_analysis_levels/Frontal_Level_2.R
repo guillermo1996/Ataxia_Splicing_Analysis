@@ -67,9 +67,10 @@ if(!exists("metadata", inherits = F)){
 
 # Metadata & subsampling weights ----
 metadata_frontal <- metadata %>% dplyr::filter(Region == "Frontal") 
-variance_df <- getVarianceDf(metadata_frontal, 
-                                        results_path = results_path,
-                                        output_file = here::here("variables/variance_explained_frontal.rds"))
+variance_df <- getVarianceDf(metadata_project = metadata_frontal,
+                             results_path = results_path,
+                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                             response_var = "mapped_junctions")
 metadata_project <- metadata_frontal
 
 # Pipeline for each possible diagnosis ----
@@ -83,7 +84,12 @@ foreach(i = seq_along(ataxia_subtypes)) %do%{
     dplyr::filter(!!sym(level) %in% clusters)
   
   ## Subsample using Gower distance ----
-  metadata_subsample <- subsampleGowerDistance(metadata_subtype, level, clusters, weights = variance_df)
+  metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_subtype, 
+                                               level = level,
+                                               id_field = "Individual_ID",
+                                               covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                                               clusters = clusters, 
+                                               weights = variance_df)
   output_figure = paste0(subtype_path, "metadata_distributions.png")
   plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
   

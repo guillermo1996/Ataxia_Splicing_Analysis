@@ -68,17 +68,19 @@ if(!exists("metadata", inherits = F)){
 
 # Metadata & clustering ----
 metadata_frontal <- metadata %>% dplyr::filter(Region == "Frontal") 
-variance_df <- getVarianceDf(metadata_frontal, 
-                                        results_path = results_path,
-                                        output_file = here::here("variables/variance_explained_frontal.rds"))
+variance_df <- getVarianceDf(metadata_project = metadata_frontal,
+                             results_path = results_path,
+                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                             response_var = "mapped_junctions")
 metadata_project <- metadata_frontal %>% dplyr::filter(RIN > 4)
 
 ## Subsample using Gower distance
-metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_project,
+metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_project, 
                                              level = level,
-                                             clusters = clusters,
+                                             id_field = "Individual_ID",
+                                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                                             clusters = clusters, 
                                              weights = variance_df)
-
 output_figure = paste0(project_path, "metadata_distributions.png")
 plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
 

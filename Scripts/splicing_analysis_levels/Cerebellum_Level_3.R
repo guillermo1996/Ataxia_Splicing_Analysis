@@ -66,10 +66,11 @@ if(!exists("metadata", inherits = F)){
 }
 
 # Metadata & subsampling weights ----
-metadata_cerebellum <- metadata %>%  dplyr::filter(Region == "Cerebellum") 
-variance_df <- getVarianceDf(metadata_cerebellum, 
-                                        results_path = results_path,
-                                        output_file = here::here("variables/variance_explained_cerebellum.rds"))
+metadata_cerebellum <- metadata %>% dplyr::filter(Region == "Cerebellum") 
+variance_df <- getVarianceDf(metadata_project = metadata_cerebellum,
+                             results_path = results_path,
+                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                             response_var = "mapped_junctions")
 metadata_project <- metadata_cerebellum 
 
 # Pipeline for each possible diagnosis ----
@@ -83,7 +84,12 @@ foreach(i = seq_along(all_diagnosis)) %do%{
     dplyr::filter(!!sym(level) %in% clusters)
   
   ## Subsample using Gower distance ----
-  metadata_subsample <- subsampleGowerDistance(metadata_diagnosis, level, clusters, weights = variance_df)
+  metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_diagnosis, 
+                                               level = level,
+                                               id_field = "Individual_ID",
+                                               covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                                               clusters = clusters, 
+                                               weights = variance_df)
   output_figure = paste0(diagnosis_path, "metadata_distributions.png")
   plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
   
