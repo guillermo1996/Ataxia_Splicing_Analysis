@@ -26,7 +26,7 @@ extractReadDepthMultiQC <- function(metadata, multiqc_path){
 #'
 #' @param metadata dataframe, contains the relevant information of all samples.
 #'   For the Ataxia research, it requires to have "sample_name" and
-#'   "Correct_sample" columns.
+#'   "ID_anon" columns.
 #' @param sj_tab_path character vector, path to the directory containing the
 #'   splice junctions files (SJ.out.tab).
 #'
@@ -37,7 +37,7 @@ loadSJ <- function(metadata, sj_tab_path){
     # Use the metadata dataframe to locate the files.
     row <- metadata[i, ]
     wrong_sample_name <- row %>% pull(sample_name)
-    correct_sample_name <- row %>% pull(Correct_sample)
+    correct_sample_name <- row %>% pull(ID_anon)
     junc_path <- paste0(sj_tab_path, "merged_", wrong_sample_name, "_mapped_post_merge.BAM_SJ.out.tab")
     
     # If file does not exist, return an empty tibble
@@ -163,7 +163,7 @@ removeEncodeBlacklistRegionsRSE <- function(rse_jx, encode_blacklist_hg38) {
   ## Look fot the overlaps between rse_jx and the ENCODE blacklisted region
   overlaps <- GenomicRanges::findOverlaps(
     query = encode_blacklist_hg38,
-    subject = rowRanges(rse_jx),
+    subject = SummarizedExperiment::rowRanges(rse_jx),
     ignore.strand = F,
     type = "any"
   )
@@ -184,7 +184,7 @@ removeEncodeBlacklistRegionsRSE <- function(rse_jx, encode_blacklist_hg38) {
 #' @return RangedSummarisedExperiment with only the junctions bigger than 25 bp.
 #' @export
 removeShortJunctionsRSE <- function(rse_jx) {
-  idxs <- which(rowRanges(rse_jx) %>% width() < 25)
+  idxs <- which(SummarizedExperiment::rowRanges(rse_jx) %>% width() < 25)
   if(length(idxs) > 0) rse_jx <- rse_jx[-idxs, ]
   
   return(rse_jx)
@@ -198,7 +198,7 @@ removeShortJunctionsRSE <- function(rse_jx) {
 #'   or less genes.
 #' @export
 removeAmbiguousGenesRSE <- function(rse_jx) {
-  idxs <- which(sapply(rowRanges(rse_jx)$gene_id_junction, length) >= 2)
+  idxs <- which(sapply(SummarizedExperiment::rowRanges(rse_jx)$gene_id_junction, length) >= 2)
   if(length(idxs) > 0) rse_jx <- rse_jx[-idxs, ]
   
   return(rse_jx)

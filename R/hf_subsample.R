@@ -136,8 +136,8 @@ subsampleGowerDistance <- function(metadata_project,
         min_ref <- names(which.min(apply(distances_df, 1, min)))
         min_cluster <- names(which.min(apply(distances_df, 2, min)))
         
-        matched_samples <- rbind(ref_metadata_cluster[ref_metadata_cluster$Individual_ID == min_ref, ], 
-                                 cluster_metadata_samples[cluster_metadata_samples$Individual_ID == min_cluster, ])
+        matched_samples <- rbind(ref_metadata_cluster[ref_metadata_cluster[, id_field, drop = T] == min_ref, ], 
+                                 cluster_metadata_samples[cluster_metadata_samples[, id_field, drop = T] == min_cluster, ])
         ref_samples <- ref_samples[!(rownames(ref_samples) == min_ref), ]
         cluster_samples <- cluster_samples[!(rownames(cluster_samples) == min_cluster), ]
         
@@ -163,7 +163,7 @@ subsampleGowerDistance <- function(metadata_project,
 #'   calculation.
 #' @export
 prepareMetadata <- function(metadata, 
-                            id_field = "Individual_ID",
+                            id_field = "ID_anon",
                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex")){
   columns <- c(id_field, covariates)
   metadata %>% 
@@ -309,7 +309,7 @@ getVarianceDf <- function(metadata_project,
   # Combine the junction information to the current metadata. Take care of the
   # columns to combine with.
   metadata_extra <- metadata_project %>%
-    dplyr::left_join(junction_information, by = c("Correct_sample" = "sample"))
+    dplyr::left_join(junction_information, by = c("ID_anon" = "sample"))
   
   variance_df <- getVarianceExplained(metadata_extra = metadata_extra,
                                       covariates = covariates,

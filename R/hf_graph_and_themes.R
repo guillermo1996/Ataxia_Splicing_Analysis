@@ -61,7 +61,12 @@ sequence_labels <- c("acceptor exon" = "Acceptor exon",
 delta_MES_labels <- c("delta MES 5'ss" = "Delta MES 5'ss", "delta MES 3'ss" = "Delta MES 3'ss")
 
 
-plotMetadataSubsample <- function(metadata_subsample, level, ref_group = NULL, output_file = "", ratio = 1, dpi = 300){
+plotMetadataSubsample <- function(metadata_subsample, 
+                                  level, 
+                                  ref_group = NULL, 
+                                  output_file = "", 
+                                  ratio = 1, 
+                                  dpi = 300){
   p <- ggplot(metadata_subsample, aes(x = !!sym(level), y = RIN)) +
     geom_boxplot() +
     geom_dotplot(aes(fill = Diagnosis), stackratio = 1.1, binaxis = "y", 

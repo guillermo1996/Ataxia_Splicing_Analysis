@@ -40,7 +40,7 @@ projectAnalysis <- function(metadata_project,
     # Load the metadata and samples for the cluster
     metadata_cluster <- metadata_project %>%
       dplyr::filter(!!sym(level) == cluster)
-    cluster_samples <- metadata_cluster$Correct_sample %>% unique
+    cluster_samples <- metadata_cluster$ID_anon %>% unique
     logger::log_info("\t\t Number of samples in cluster: ", length(cluster_samples), ".")
     
     # Extract the split reads, annotated junctions and distances for the cluster
@@ -220,7 +220,12 @@ getCommonNovel <- function(project_path,
 #' @return Dataframe containing the results of the Wilcoxon paired signed-rank
 #'   test.
 #' @export
-MSRanalysis <- function(common_introns, project_path, clusters, splice_sites = c("Donor", "Acceptor"), overwrite = F, output_file = "wilcox_test_MSR.rds"){
+MSRanalysis <- function(common_introns, 
+                        project_path, 
+                        clusters, 
+                        splice_sites = c("Donor", "Acceptor"), 
+                        overwrite = F, 
+                        output_file = "wilcox_test_MSR.rds"){
   if(file.exists(paste0(project_path, output_file)) & !overwrite){
     wilcox_test_MSR <- readRDS(paste0(project_path, output_file))
     return(wilcox_test_MSR)

@@ -57,9 +57,10 @@ junctionReading <- function(metadata,
   logger::log_info("\t\t Reading all extracted .bam files (num_cores = ", num_cores, ").")
   all_junc <- foreach(i = 1:nrow(metadata), .packages = c("tidyverse")) %dopar% {
     ## Definition of the variables
-    sample_id <- metadata[i, ] %>% pull(Correct_sample)
+    sample_name <- metadata[i, ] %>% pull(Correct_sample)
+    sample_id <- metadata[i, ] %>% pull(ID_anon)
     cluster <- metadata[i, ] %>% pull(Type) %>% tolower()
-    junc_path <- paste0(main_samples_path, cluster, "/", sample_id, ".bam.sort.s0.junc")
+    junc_path <- paste0(main_samples_path, cluster, "/", sample_name, ".bam.sort.s0.junc")
     
     if(!file.exists(junc_path)) return(tibble())
     

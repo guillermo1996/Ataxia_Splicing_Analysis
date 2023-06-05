@@ -58,7 +58,7 @@ juctionPairing <- function(metadata,
   
   all_distances_raw <- foreach(i = 1:nrow(metadata), .packages = c("GenomicRanges", "tidyverse"), .export = "getDistancesDataFrame") %dopar%{
     row <- metadata[i, ]
-    sample <- row$Correct_sample
+    sample <- row$ID_anon
     if(!(sample %in% names(all_reads_combined))) return(tibble::tibble())
     
     sample_reads <- all_reads_combined %>% 
