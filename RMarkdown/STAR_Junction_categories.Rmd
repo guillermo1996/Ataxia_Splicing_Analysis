@@ -168,7 +168,7 @@ Given that the annotation process is long, we only create the variable if it doe
 ```{r, echo = T}
 rse_jx_path <- file.path(main_path, "variables/rse_jx_gencode38.rds")
 if(!file.exists(rse_jx_path)){
-  rse_jx <- createRSE(sj_df, gtf_gencode_path, sample_info = metadata, sample_id_col = "Correct_sample")
+  rse_jx <- createRSE(sj_df, gtf_gencode_path, sample_info = metadata, sample_id_col = "ID_anon")
   rse_jx %>% saveRDS(rse_jx_path)
 }else{
   rse_jx <- readRDS(rse_jx_path)

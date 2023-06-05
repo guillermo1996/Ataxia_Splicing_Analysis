@@ -206,6 +206,7 @@ junc_files_df <- foreach(i = seq_len(nrow(metadata)), .packages = c("tidyverse")
 #doParallel::registerDoParallel(8) # Whether to use multiprocessing
 all_junc <- foreach(i = seq_len(nrow(metadata)), .packages = c("tidyverse")) %dopar%{
   row = metadata[i, ]
+  sample_id <- row$ID_anon
   sample_name = row$Correct_sample
   sample_diagnosis = row$Diagnosis
   
@@ -224,7 +225,7 @@ all_junc <- foreach(i = seq_len(nrow(metadata)), .packages = c("tidyverse")) %do
     junc <- junc %>%
       dplyr::select(chr = X1, start = X2, stop = X3, junID = X4, reads = X5, strand = X6, blockSizes = X11 ) %>%
       dplyr::mutate(strand = ifelse(strand == "?", "*", strand)) %>%
-      dplyr::mutate(sample_id = sample_name,
+      dplyr::mutate(sample_id = sample_id,
                     gene_name = gene_name) %>%
       tidyr::separate(col = blockSizes, sep = ",", c("blockSizesStart", "blockSizesEnd"), conver = T) %>%
       dplyr::mutate(start = start + blockSizesStart + 1, stop = stop - blockSizesEnd) %>%
@@ -356,7 +357,7 @@ annot_junc_prop_df <- annot_junc_df %>%
                 prop_junc = n_junc/total_junc,
                 prop_count = count/total_count) %>%
   dplyr::left_join(metadata %>% 
-                     dplyr::select(sample_id = Correct_sample, Type, Diagnosis, AtaxiaSubtype, Region),
+                     dplyr::select(sample_id = ID_anon, Type, Diagnosis, AtaxiaSubtype, Region),
                    by = "sample_id") %>%
   dplyr::mutate(Type = factor(Type, levels = c("Control", "Case")),
                 Region = factor(Region, levels = c("Cerebellum", "Frontal"))) %>%
@@ -510,7 +511,7 @@ annot_junc_prop_red_df <- annot_junc_df %>%
                 prop_junc = n_junc/total_junc,
                 prop_count = count/total_count) %>%
   dplyr::left_join(metadata %>% 
-                     dplyr::select(sample_id = Correct_sample, Type, Diagnosis, AtaxiaSubtype, Region),
+                     dplyr::select(sample_id = ID_anon, Type, Diagnosis, AtaxiaSubtype, Region),
                    by = "sample_id") %>%
   dplyr::mutate(Type = factor(Type, levels = c("Control", "Case")),
                 Region = factor(Region, levels = c("Cerebellum", "Frontal"))) %>%

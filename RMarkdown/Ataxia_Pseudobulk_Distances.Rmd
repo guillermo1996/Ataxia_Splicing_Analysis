@@ -203,11 +203,13 @@ The obtained weights are the following:
 variance_cerebellum_df <- metadata %>% 
   dplyr::filter(Region == "Cerebellum") %>%
   getVarianceDf(results_path = results_path,
-                output_file = here::here("variables/variance_explained_cerebellum.rds"))
+                covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                response_var = "mapped_junctions")
 variance_frontal_df <- metadata %>% 
   dplyr::filter(Region == "Frontal") %>%
   getVarianceDf(results_path = results_path,
-                output_file = here::here("variables/variance_explained_frontal.rds"))
+                covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                response_var = "mapped_junctions")
 
 variance_cerebellum_df %>%
   dplyr::select(Predictor, Weight_Cerebellum = Variance_explained) %>%
@@ -687,7 +689,11 @@ Distribution of sample RIN for Cerebellum level 1 study:
 metadata_project <- metadata %>% 
   dplyr::filter(Region == "Cerebellum") %>%
   dplyr::filter(!(Type == "Control" & RIN >= 7)) %>%
-  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control"), weights = variance_cerebellum_df) 
+  subsampleGowerDistance(level = "Type", 
+                         clusters = c("Case", "Control"),
+                         id_field = "ID_anon",
+                         covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"), 
+                         weights = variance_cerebellum_df) 
 
 metadata_project %>%
   plotMetadataSubsample(level = "Type") +
@@ -714,7 +720,11 @@ Distribution of sample RIN for Frontal Cortex level 1 study:
 metadata_project <- metadata %>% 
   dplyr::filter(Region == "Frontal") %>%
   dplyr::filter(RIN > 4) %>%
-  subsampleGowerDistance(level = "Type", clusters = c("Case", "Control")) 
+  subsampleGowerDistance(level = "Type", 
+                         clusters = c("Case", "Control"),
+                         id_field = "ID_anon",
+                         covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                         weights = variance_frontal_df) 
 
 metadata_project %>%
   plotMetadataSubsample(level = "Type") +
@@ -745,14 +755,19 @@ all_metadata <- foreach(i = 1:2) %do%{
     
   variance_df <- getVarianceDf(metadata_tissue, 
                                results_path = here::here("results/"),
-                               output_file = here::here("variables/sample_junction_information.rds"))
+                               covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                               response_var = "mapped_junctions")
   
   foreach(j = seq_along(ataxia_subtypes)) %do%{
     subtype <- ataxia_subtypes[j]
     
     metadata_subsample <- metadata_tissue %>%
       dplyr::filter(AtaxiaSubtype %in% c(subtype, "Control")) %>%
-      subsampleGowerDistance(level = "AtaxiaSubtype", clusters = c(subtype, "Control"), weights = variance_df) %>%
+      subsampleGowerDistance(level = "AtaxiaSubtype", 
+                             clusters = c(subtype, "Control"),
+                             id_field = "ID_anon",
+                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                             weights = variance_df) %>%
       dplyr::mutate(study_group = subtype)
   } %>% dplyr::bind_rows()
 } %>% dplyr::bind_rows() %>%
@@ -851,14 +866,19 @@ all_metadata <- foreach(i = 1:2) %do%{
     
   variance_df <- getVarianceDf(metadata_tissue, 
                                results_path = here::here("results/"),
-                               output_file = here::here("variables/sample_junction_information.rds"))
+                               covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                               response_var = "mapped_junctions")
   
   foreach(j = seq_along(all_diagnosis)) %do%{
     diagnosis <- all_diagnosis[j]
     
     metadata_subsample <- metadata_tissue %>%
       dplyr::filter(Diagnosis %in% c(diagnosis, "Control")) %>%
-      subsampleGowerDistance(level = "Diagnosis", clusters = c(diagnosis, "Control"), weights = variance_df) %>%
+      subsampleGowerDistance(level = "Diagnosis", 
+                             clusters = c(diagnosis, "Control"), 
+                             id_field = "ID_anon",
+                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                             weights = variance_df) %>%
       dplyr::mutate(study_group = diagnosis)
   } %>% dplyr::bind_rows()
 } %>% dplyr::bind_rows() %>%
