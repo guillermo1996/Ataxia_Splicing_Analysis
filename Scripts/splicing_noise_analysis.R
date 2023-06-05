@@ -145,5 +145,5 @@ source(here::here("Scripts/splicing_analysis_levels/Cerebellum_Level_3.R"))
 source(here::here("Scripts/splicing_analysis_levels/Frontal_Level_3.R"))
 
 ## Test effect of number of samples (Section "Additional Research" in "Median MSR" report) ----
-# source(here::here("Scripts/splicing_analysis_levels/Cerebellum_number_samples.R"))
-# source(here::here("Scripts/splicing_analysis_levels/Frontal_number_samples.R"))
+source(here::here("Scripts/splicing_analysis_levels/Cerebellum_number_samples.R"))
+source(here::here("Scripts/splicing_analysis_levels/Frontal_number_samples.R"))

@@ -35,6 +35,8 @@ source(here::here("R/hf_graph_and_themes.R"))
 source(here::here("R/hf_subsample.R"))
 source(here::here("R/hf_additional.R"))
 
+logger::log_info("Starting Analysis for Cerebellum - Number of samples studies.")
+
 ## Relevant Paths
 if(!exists("results_path")) results_path <- here::here("results/")
 project_path <- file.path(results_path, "Cerebellum_sample_number/")
@@ -58,21 +60,30 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 
 # Metadata & clustering ----
 metadata_cerebellum_control <- metadata %>% dplyr::filter(Region == "Cerebellum", Type == "Control")  
-variance_df <- getVarianceDf(metadata_cerebellum_control, 
+variance_df <- getVarianceDf(metadata_project = metadata_cerebellum_control,
                              results_path = results_path,
-                             output_file = here::here("variables/variance_explained_cerebellum_control.rds"))
+                             covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                             response_var = "mapped_junctions")
 metadata_project <- metadata_cerebellum_control %>%
   dplyr::mutate(Type = ifelse(ID_anon %in% c("CO12A_Cerebellum", "CO14B_Cerebellum", "CO2A_Cerebellum"), "Case", "Control"))
 
 # Subsample and MSR for every value of N
 foreach(n = 1:6) %do%{
   logger::log_info("Starting Wilcoxon paired signed-rank test for N = ", n, ".")
-  metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_project, level = level, clusters = clusters, weights = variance_df, n = n)
+  metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_project, 
+                                               level = level,
+                                               id_field = "ID_anon",
+                                               covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
+                                               clusters = clusters, 
+                                               weights = variance_df,
+                                               n = n)
   project_n_path <- file.path(project_path, paste0("N", n, "/"))
   dir.create(project_n_path, showWarnings = F)
   
-  output_figure = paste0(project_n_path, "metadata_distributions.png")
-  plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
+  ### Plot and store the distributions in disk. Remove if not necessary. The plot
+  ### function is wrapped in "suppressMessages" to ignore a warning from "ggplot".
+  output_figure = paste0(project_path, "metadata_distributions.png")
+  suppressMessages(print(plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)))
   
   projectAnalysis(metadata_project = metadata_subsample,
                   project_path = project_n_path,

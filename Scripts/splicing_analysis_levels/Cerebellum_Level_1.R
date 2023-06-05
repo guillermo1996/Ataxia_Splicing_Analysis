@@ -42,6 +42,8 @@ source(here::here("R/hf_graph_and_themes.R"))
 source(here::here("R/hf_subsample.R"))
 source(here::here("R/hf_additional.R"))
 
+logger::log_info("Starting Analysis for Cerebellum Level 1.")
+
 ## Relevant Paths
 if(!exists("results_path")) results_path <- here::here("results/")
 project_path <- file.path(results_path, "Cerebellum_Level_1/")
@@ -76,12 +78,16 @@ metadata_project <- metadata_cerebellum %>% dplyr::filter(!(Type == "Control" & 
 ## Subsample using Gower distance
 metadata_subsample <- subsampleGowerDistance(metadata_project = metadata_project, 
                                              level = level,
-                                             id_field = "Individual_ID",
+                                             id_field = "ID_anon",
                                              covariates = c("RIN", "PMI", "Brain.Bank", "Age_at_death", "Sex"),
                                              clusters = clusters, 
                                              weights = variance_df)
+
+### Plot and store the distributions in disk. Remove if not necessary. The plot
+### function is wrapped in "suppressMessages" to ignore a warning from "ggplot".
 output_figure = paste0(project_path, "metadata_distributions.png")
-plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)
+suppressMessages(print(plotMetadataSubsample(metadata_subsample, level, output_file = output_figure, ratio = 1.2)))
+
 
 # Calculation of the Mis-splicing ratio ----
 projectAnalysis(metadata_project = metadata_subsample,
