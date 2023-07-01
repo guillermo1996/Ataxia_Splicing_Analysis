@@ -87,7 +87,7 @@ intron_type_levels <- c("annotated", "novel_acceptor", "novel_donor",
 # Background
 > Aim: update the studies carried out by Regina H. Reynolds about introns' annotation distributions. Original source material: [Leafcutter: intron annotation and visualisation](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html)
 
-This report is meant to be used as a template. As such, the different sections will include instructions on how to modify the graphic outputs and not descriptions about the results themselves.
+This report is meant to be used as a template. As such, the different sections will include instructions on how to modify the graphic outputs and not descriptions about the results themselves. To run this script, it is necessary to source the file at `/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/R/Leafcutter_introns.R` with needed helper functions.
 
 ## Changelog {.tabset -}
 
@@ -103,7 +103,7 @@ This report is meant to be used as a template. As such, the different sections w
 
 To annotate the junctions, we need to set the following variables:
 
-* `use_strand`: whether to use the strand information for the Leafcutter clusters' ID.
+* `use_strand`: whether to use the strand information for the Leafcutter clusters' ID. Note that the script was not tested with `use_strand` set to `TRUE`, so it might contain errors.
 
 * `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v38 is employed (also tested with ENSEMBL v105).
 
@@ -175,6 +175,8 @@ if(!file.exists(annotated_path)){
 }
 ```
 
+It is important to use a consistent transcriptome `seqlevelsStyle` in order to properly match the extracted junctions. By default, `NCBI` style is recommended (no `chr` before the `seqnames`).
+
 ## Proportion of annotated introns {.tabset}
 
 We use the function `printTypeTable` to print a table with the proportion of significant junctions by category. Results by tissue are shown when expanded below the main table. The significant column denotes the number of introns by annotation type that were found significantly differentially spliced. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#annotating-introns).
@@ -203,7 +205,7 @@ printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, de
     {if(deltapsi_filter) dplyr::filter(., abs(deltapsi) >= 0.1) else .} %>%
     dplyr::distinct(comparison, cluster_id)
   
-  # Conver the annotated GRanges object to a tibble.
+  # Convert the annotated GRanges object to a tibble.
   annotated_df <- annotated[[level]] %>%
     tibble::as_tibble()
   

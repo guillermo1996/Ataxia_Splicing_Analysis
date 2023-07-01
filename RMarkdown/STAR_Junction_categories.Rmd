@@ -142,7 +142,11 @@ metadata <- readr::read_delim(metadata_path, show_col_types = FALSE) %>%
 
 The first step is to load the junctions from the STAR alignment output files (`SJ.tab.out`). We employ the [`loadSJ`](https://github.com/guillermo1996/Ataxia_Splicing_Analysis/blob/main/R/STAR_introns.R#L35) function, an adaptation of the `load_sj_df` function by Regina. [Source](https://github.com/RHReynolds/LBD-seq-bulk-analyses/blob/main/R/load_sj_df.R).
 
+Since the `sj.tab.out` file can have different names for different datasets, please modify from the `loadSJ` function the variable `junc_path` to match with the name of the files.
+
 ```{r, echo = T}
+# Modify the variable "junc_path" inside the function to match with the specific
+# naming scheme of the dataset.
 sj_df <- loadSJ(metadata, sj_tab_path)
 ```
 

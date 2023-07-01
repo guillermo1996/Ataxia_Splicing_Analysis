@@ -36,8 +36,11 @@ loadSJ <- function(metadata, sj_tab_path){
   sj_df <- foreach(i = 1:nrow(metadata)) %do%{
     # Use the metadata dataframe to locate the files.
     row <- metadata[i, ]
+    
+    # Ataxia data employed "wrong_sample_name" for the file name, but "ID_anon"
+    # as the real sample_id
     wrong_sample_name <- row %>% pull(sample_name)
-    correct_sample_name <- row %>% pull(ID_anon)
+    ID_anon <- row %>% pull(ID_anon)
     junc_path <- paste0(sj_tab_path, "merged_", wrong_sample_name, "_mapped_post_merge.BAM_SJ.out.tab")
     
     # If file does not exist, return an empty tibble
@@ -49,7 +52,7 @@ loadSJ <- function(metadata, sj_tab_path){
                               col_names = c("chr", "intron_start", "intron_end", "strand", "intron_motif", "intron_annotation", 
                                             "unique_reads_junction", "multimap_reads_junction", "max_splice_alignment_overhang"),
                               col_types = "cdddddddd") %>%
-      dplyr::mutate(sample = correct_sample_name)
+      dplyr::mutate(sample = ID_anon)
   } %>% dplyr::bind_rows()
   
   return(sj_df)
