@@ -23,12 +23,18 @@ always_allow_html: true
 ---
 
 ```{r setup, include = F}
-## Load libraries
-library(here)
-library(tidyverse)
-library(foreach)
+# Initial setup ----
+## Required libraries
+shhh <- suppressPackageStartupMessages
+shhh(library(here))
+shhh(library(tidyverse))
+shhh(library(foreach))
+shhh(library(patchwork))
+shhh(library(GenomeInfoDb))
+shhh(library(GenomicRanges))
 
-main_path <- file.path("/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/")
+## Define main path
+main_path <- "/home/grocamora/Core_Projects/Ataxia_Splicing_Analysis/"
 
 ## Load helper functions
 source(file.path(main_path, "R/Leafcutter_introns.R"))
@@ -103,17 +109,26 @@ This report is meant to be used as a template. As such, the different sections w
 
 To annotate the junctions, we need to set the following variables:
 
-* `use_strand`: whether to use the strand information for the Leafcutter clusters' ID. Note that the script was not tested with `use_strand` set to `TRUE`, so it might contain errors.
+* `overwrite_results`: whether to overwrite previously annotated results. If set to `FALSE`, it will look for the file in disk (given a path) and load the results. If set to `TRUE`, it will always annotate the introns.
 
-* `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v38 is employed (also tested with ENSEMBL v105).
+* `use_strand`: whether to use the strand information for the Leafcutter clusters' ID. 
+
+* `gtf_path`: path to the reference transcriptome to annotate the junctions. In this report, GENCODE v41 is employed.
+
+* `results_path`: path to here to store the results. Also needed to specify the path to figures and where to store the annotated introns.
 
 ```{r, echo = T}
-# For the Ataxia dataset, the cluster IDs don't have a valid strand. Set to FALSE.
+## Script Parameters
+overwrite_results <- F
 use_strand <- F
-
-# Path to the gtf file to annotate the introns
-#gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/Homo_sapiens.GRCh38.105.gtf"
 gtf_path <- "/home/grocamora/RytenLab-Research/Additional_files/GENCODE/gencode.v38.annotation.gtf"
+
+results_path <- file.path(main_path, "results/leafcutter_annotated/")
+figure_path <- file.path(results_path, "figures/")
+annotated_path <- file.path(results_path, "annotated_gencode38.rds")
+
+dir.create(results_path, showWarnings = F, recursive = T)
+dir.create(figure_path, showWarnings = F, recursive = T)
 ```
 
 ## Loading leafcutter results
@@ -135,7 +150,7 @@ The junctions are annotated using the function `junction_annot` from David Zhang
 
 ```{r, echo = T}
 # Path to where the annotated intron list will be stored in disk.
-annotated_path <- file.path(main_path, "variables/annotated_gencode38.rds")
+annotated_path <- file.path(results_path, "annotated_gencode38.rds")
 
 # If file already exists, do not execute the annotation process.
 if(!file.exists(annotated_path)){
@@ -144,7 +159,7 @@ if(!file.exists(annotated_path)){
   
   # Some reference transcriptomes (i.e. Gencode) use the characters "chr" before
   # the seqnames. To bring consistency, the "seqlevelsStyle" is set to "NCBI".
-  GenomeInfoDb::seqlevelsStyle(TxDb_ref) <- c("NCBI")
+  #GenomeInfoDb::seqlevelsStyle(TxDb_ref) <- c("NCBI")
   
   annotated <- leafcutter_list %>% purrr::map(function(x){
     # Extract the successful clusters
@@ -155,10 +170,11 @@ if(!file.exists(annotated_path)){
     
     # Transform the data from leafcutter to a valid GRanges object to run the annotation
     annotated_introns <- x$intron_usage %>%
-      tidyr::separate(col = "intron", into = c("chr", "start", "end", "cluster_id"), sep = ":", remove = F) %>%
+      tidyr::separate(col = "intron", into = c("chr", "intron_start", "intron_end", "cluster_id"), sep = ":", remove = F) %>%
       dplyr::mutate(cluster_id = str_c(chr, ":", cluster_id)) %>%
       dplyr::filter(cluster_id %in% success_cluster) %>%
-      convert_leafcutter(use_strand = use_strand) %>%
+      dplyr::select(-chr, -intron_start, -intron_end, cluster_id) %>%
+      convert_leafcutter(use_strand = use_strand, seqlevelsStyle = GenomeInfoDb::seqlevelsStyle(TxDb_ref)) %>%
       dasper::junction_annot(ref = TxDb_ref)
     
     # Once the introns are annotated, we remove all the annotated introns that
@@ -181,7 +197,7 @@ It is important to use a consistent transcriptome `seqlevelsStyle` in order to p
 
 We use the function `printTypeTable` to print a table with the proportion of significant junctions by category. Results by tissue are shown when expanded below the main table. The significant column denotes the number of introns by annotation type that were found significantly differentially spliced. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#annotating-introns).
 
-```{r, echo = T}
+```{r, echo = T, eval = T}
 #' Prints the proportion of significant junctions by type
 #'
 #' Given the list of annotated junctions and the list of leafcutter results, this
@@ -205,7 +221,7 @@ printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, de
     {if(deltapsi_filter) dplyr::filter(., abs(deltapsi) >= 0.1) else .} %>%
     dplyr::distinct(comparison, cluster_id)
   
-  # Convert the annotated GRanges object to a tibble.
+  # Conver the annotated GRanges object to a tibble.
   annotated_df <- annotated[[level]] %>%
     tibble::as_tibble()
   
@@ -219,20 +235,22 @@ printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, de
   
   # Extract the number of junctions by type that are significant.
   significant_counts <- annotated_df %>%
-    dplyr::inner_join(significant_clusters) %>%
+    dplyr::inner_join(significant_clusters, by = c("comparison", "cluster_id")) %>%
     dplyr::group_by(type) %>% # (Optional) Add comparison/tissue here.
     dplyr::summarise(significant = n())
   
   # Prints the proportion of significant junctions by type.
-  annotated_df %>%
+  output_table <- annotated_df %>%
     dplyr::group_by(type) %>% # (Optional) Add comparison/tissue here.
     dplyr::summarise(all = n()) %>% 
-    dplyr::inner_join(significant_counts) %>%
-    dplyr::mutate(proportion = (significant/all) %>% signif(2)) %>% 
+    dplyr::inner_join(significant_counts, by = "type") %>%
+    dplyr::mutate(proportion = (significant/all) %>% signif(2)) %>%
     dplyr::arrange(-all) %>% 
-    `colnames<-`(c("Junction Type", "Count Junctions", "Significant Junctions", "Proportion")) %>%
+    `colnames<-`(c("Junction Type", "Count Junctions", "Significant Junctions", "Proportion"))
+  
+  output_table %>% 
     kableExtra::kbl(booktabs = T, linesep = "") %>%
-    kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+    kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
     kableExtra::row_spec(0, bold = T, font_size = 16)
 }
 ```
@@ -383,7 +401,7 @@ Different visualizations will be presented replicating Regina's results, but ada
 
 Visualization of the proportion of junction categories by comparison and tissue. We use the function `plotProportionOfAnnotation` with the parameters explained next. Relevant to notice the addition of the `tissue` parameter that can split the comparisons by keywords in their name (e.g. if we specify `Cerebellum` in the tissue parameter, only comparison that include the keyword `Cerebellum` will be considered). [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#number-of-overlapping-introns)
 
-```{r, echo = T}
+```{r, echo = T, eval = T}
 #' Plots the proportion of junction categories
 #'
 #' Given the list of annotated junctions and the list of leafcutter results,
@@ -416,7 +434,7 @@ plotProportionOfAnnotation <- function(annotated, leafcutter_list, level, use_st
   # Extract the introns with successful comparison and cluster
   success <- annotated[[level]] %>%
     tibble::as_tibble() %>%
-    dplyr::inner_join(success_cluster)
+    dplyr::inner_join(success_cluster, by = c("comparison", "cluster_id"))
   
   # Get introns with significant comparison and cluster
   significant <- extractSignificantIntrons(annotated[[level]], leafcutter_list[[level]], use_strand, tissue)
@@ -501,7 +519,7 @@ plotProportionOfAnnotation(annotated, leafcutter_list, level = "diagnoses", use_
 
 In the following plots, we measure the number of differentially spliced introns across overlaps. We use the function `plotNumberOverlappingIntrons`, with the same arguments as before. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#number-of-overlapping-introns)
 
-```{r, echo = T}
+```{r, echo = T, eval = T}
 #' Plot the number of overlapping significant junctions
 #'
 #' First, we obtain the annotated introns from significant clusters and
@@ -589,7 +607,7 @@ plotNumberOverlappingIntrons(annotated, leafcutter_list, level = "diagnoses", us
 
 We can also plot by comparisons the proportion of the number of overlapping introns. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#distribution-of-annotation-types-across-comparisons).
 
-```{r, echo = T}
+```{r, echo = T, eval = T}
 #' Plot the proportion of overlapping significant junctions by comparison
 #'
 #' First, we obtain the annotated introns from significant clusters and
@@ -685,7 +703,7 @@ plotDistributionAnnotatedTypes(annotated, leafcutter_list, level = "diagnoses", 
 
 Lastly, we also represent the proportion of significant cluster in which all the introns are annotated introns. [Original Source](https://rhreynolds.github.io/LBD-seq-bulk-analyses/quantification_splicing/Leafcutter_intron_annotation.html#proportion-of-clusters-containing-only-annotated-introns)
 
-```{r, echo = T}
+```{r, echo = T, eval = T}
 #' Plot the proportion significant clusters containing only annotated introns
 #'
 #' Obtain the introns from significant clusters and comparisons and removes the

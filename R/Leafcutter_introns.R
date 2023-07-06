@@ -1,3 +1,12 @@
+# Dictionary to rename the comparisons in the plot
+intron_type_labels <- c("annotated" = "Annotated", "novel_donor" = "Novel Donor", 
+                        "novel_acceptor" = "Novel Acceptor", 
+                        "novel_combo" = "Novel Combo", "novel_exon_skip" = "Novel Exon Skip", 
+                        "unannotated" = "Unannotated")
+
+intron_type_levels <- c("annotated", "novel_acceptor", "novel_donor", 
+                        "novel_exon_skip", "novel_combo", "unannotated")
+
 #' Removes the strand from the cluster ID
 #'
 #' @param df data.frame containing a cluster ID in the "input_name" column.
@@ -46,7 +55,7 @@ extractSignificantIntrons <- function(annotated_gr, leafcutter_result, use_stran
   # Extract the junctions with significant comparison and cluster
   significant_annotated <- annotated_gr %>%
     tibble::as_tibble() %>%
-    dplyr::inner_join(significant_cluster)
+    dplyr::inner_join(significant_cluster, by = c("comparison", "cluster_id"))
   
   return(significant_annotated)
 }
@@ -55,27 +64,30 @@ extractSignificantIntrons <- function(annotated_gr, leafcutter_result, use_stran
 #'
 #' Inputs a leafcutter splicing analysis and converts it to a GRanges object
 #' that can be annotated.
-#' 
-#' Source: https://github.com/RHReynolds/LBD-seq-bulk-analyses/blob/main/R/convert_leafcutter.R
 #'
-#' @param leafcutter_result leafcutter results of the study.
+#' Source:
+#' https://github.com/RHReynolds/LBD-seq-bulk-analyses/blob/main/R/convert_leafcutter.R
+#'
+#' @param leafcutter_results leafcutter results of the study.
 #' @param use_strand boolean to specify whether to use the strand in the
 #'   clusters' ID.
+#' @param seqlevelsStyle character, seqlevels style of the reference
+#'   transcriptome. Can be obtained using GenomeInfoDb::seqlevelsStyle()
 #'
 #' @return GRanges object from leafcutter results.
 #' @export
-convert_leafcutter <- function(leafcutter_results, use_strand = F){
+convert_leafcutter <- function(leafcutter_results, use_strand = F, seqlevelsStyle = "UCSC"){
   # Split the intron and cluster_id columns
   leafcutter_results <- leafcutter_results %>% 
     tidyr::separate(col = "intron", into = c("chr", "intron_start", "intron_end", "cluster_id"), sep = ":") %>%
     dplyr::mutate(cluster_id = str_c(chr, ":", cluster_id)) %>%
-    tidyr::separate(col = "cluster_id", into = c("prefix", "cluster_id", "strand"), sep = "_", remove = F) %>%
-    dplyr::mutate(chr = str_replace(chr, "chr", ""))
+    tidyr::separate(col = "cluster_id", into = c("prefix", "cluster_id", "strand"), sep = "_")
   
   # Whether to include the strand in the GRanges object
   if(use_strand){
     leafcutter_gr <- leafcutter_results %>% 
       tidyr::unite(col = "cluster_id", c("prefix", "cluster_id", "strand"), sep = "_", remove = F) %>%
+      dplyr::select(-prefix) %>%
       GenomicRanges::makeGRangesFromDataFrame(start.field = "start",
                                               end.field = "end",
                                               seqnames.field = "chr",
@@ -83,8 +95,8 @@ convert_leafcutter <- function(leafcutter_results, use_strand = F){
                                               keep.extra.columns = T)
   }else{
     leafcutter_gr <- leafcutter_results %>% 
-      dplyr::select(-strand) %>%
       tidyr::unite(col = "cluster_id", c("prefix", "cluster_id"), sep = "_", remove = T) %>%
+      dplyr::select(-prefix, -strand) %>%
       GenomicRanges::makeGRangesFromDataFrame(start.field = "start",
                                               end.field = "end",
                                               seqnames.field = "chr",
@@ -94,6 +106,10 @@ convert_leafcutter <- function(leafcutter_results, use_strand = F){
   # Leafcutter intron definition adds an extra +1 to intron ends. For best
   # matching to ref. annotation must remove 1 bp
   GenomicRanges::end(leafcutter_gr) <- GenomicRanges::end(leafcutter_gr) - 1
+  
+  # Modify the seqlevelsStyle of the output
+  GenomeInfoDb::seqlevelsStyle(leafcutter_gr) <- seqlevelsStyle
+  
   return(leafcutter_gr)
 }
 
@@ -122,9 +138,10 @@ removeAmbiguousGenesLeafcutter <- function(input_SR_details){
 #' @param level index or name of the specific study in both the "annotated" and "leafcutter_list" arguments.
 #' @param use_strand boolean to specify whether to use the strand in the clusters' ID.
 #' @param deltapsi_filter boolean to specify whether to use a deltaPSI filter of |dPSI| >= 0.1
+#' @param tissue character vector, if provided, the comparisons employed must contain the keyword.
 #'
 #' @export
-printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, deltapsi_filter = F){
+printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, deltapsi_filter = F, tissue = NULL){
   # Extract the significant comparisons and clusters
   significant_clusters <- leafcutter_list[[level]]$significant_clusters_0.05_filter %>%
     dplyr::mutate(cluster_id = str_c(chr, ":", cluster)) %>% 
@@ -136,22 +153,32 @@ printTypeTable <- function(annotated, leafcutter_list, level, use_strand = F, de
   annotated_df <- annotated[[level]] %>%
     tibble::as_tibble()
   
+  # If a tissue is provided, filter the comparisons to contain the input tissue.
+  if(!is.null(tissue)){
+    significant_clusters <- significant_clusters %>%
+      dplyr::filter(grepl(tissue, comparison))
+    annotated_df <- annotated_df %>%
+      dplyr::filter(grepl(tissue, comparison))
+  }
+  
   # Extract the number of junctions by type that are significant.
   significant_counts <- annotated_df %>%
-    dplyr::inner_join(significant_clusters) %>%
+    dplyr::inner_join(significant_clusters, by = c("comparison", "cluster_id")) %>%
     dplyr::group_by(type) %>% # (Optional) Add comparison/tissue here.
     dplyr::summarise(significant = n())
   
   # Prints the proportion of significant junctions by type.
-  annotated_df %>%
+  output_table <- annotated_df %>%
     dplyr::group_by(type) %>% # (Optional) Add comparison/tissue here.
     dplyr::summarise(all = n()) %>% 
-    dplyr::inner_join(significant_counts) %>%
-    dplyr::mutate(proportion = (significant/all) %>% signif(2)) %>% 
+    dplyr::inner_join(significant_counts, by = "type") %>%
+    dplyr::mutate(proportion = (significant/all) %>% signif(2)) %>%
     dplyr::arrange(-all) %>% 
-    `colnames<-`(c("Junction Type", "Count Junctions", "Significant Junctions", "Proportion")) %>%
+    `colnames<-`(c("Junction Type", "Count Junctions", "Significant Junctions", "Proportion"))
+  
+  output_table %>% 
     kableExtra::kbl(booktabs = T, linesep = "") %>%
-    kableExtra::kable_classic(full_width = T, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
+    kableExtra::kable_classic(full_width = F, "hover", "striped", html_font = "Cambria", font_size = 14) %>%
     kableExtra::row_spec(0, bold = T, font_size = 16)
 }
 
@@ -187,7 +214,7 @@ plotProportionOfAnnotation <- function(annotated, leafcutter_list, level, use_st
   # Extract the introns with successful comparison and cluster
   success <- annotated[[level]] %>%
     tibble::as_tibble() %>%
-    dplyr::inner_join(success_cluster)
+    dplyr::inner_join(success_cluster, by = c("comparison", "cluster_id"))
   
   # Get introns with significant comparison and cluster
   significant <- extractSignificantIntrons(annotated[[level]], leafcutter_list[[level]], use_strand, tissue)
@@ -210,13 +237,18 @@ plotProportionOfAnnotation <- function(annotated, leafcutter_list, level, use_st
                     #comparison = comparison_labels[comparison],
                     comparison = as_factor(comparison)) %>% 
       ggplot(aes(x = comparison, y = prop, fill = type), colour = "black") +
-      geom_col(color = "black") +
+      geom_col(color = "black", width= 0.6) +
+      # ggrepel::geom_text_repel(aes(label = paste0(round(prop, 2)*100, "%"), x = comparison, group = type), 
+      #                          position = ggpp::position_stacknudge(x = 0.4, direction = "split"),
+      #                          size = 3.5) +
+      # ggrepel::geom_text_repel(aes(label = round(prop, 2), x = comparison, group = type), direction = "x", force= 10) +
       labs(x = "", y = "Proportion") +
       scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
-      scale_x_discrete(expand = expansion(add = 0.7)) + 
+      scale_x_discrete(expand = expansion(add = 0.5)) + 
       scale_fill_manual(name = "Acceptor/donor annotation", 
                         values = rev(c("#3C5488", "#E64B35", "#00A087", "#4DBBD5", "#7E6148", "grey"))) +
       custom_gg_theme + 
+      theme(axis.text.x = ggplot2::element_text(color = "black", size = 8, angle = 90, hjust = 0.5)) +
       guides(fill = guide_legend(reverse = T))
   }
   
@@ -332,6 +364,7 @@ plotDistributionAnnotatedTypes <- function(annotated, leafcutter_list, level, us
     {if(!is.null(tissue)) ggtitle(paste0("Tissue: ", tissue))}
 }
 
+
 #' Plot the proportion significant clusters containing only annotated introns
 #'
 #' Obtain the introns from significant clusters and comparisons and removes the
@@ -378,6 +411,8 @@ plotDistributionOnlyAnnotatedTypes <- function(annotated, leafcutter_list, level
     dplyr::mutate(comparison = as_factor(comparison)) %>% 
     ggplot(aes(x = comparison, y = prop, fill = introns_all_annotated)) +
     geom_col(color = "black") +
+    geom_text(aes(label = paste0(round(prop, 2)*100, "%")), position = position_stack(vjust = 0.5), 
+              size = 4, color = "black") +
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
     scale_fill_manual(name = "All introns annotated", 
                       values = c("#E64B35", "#3C5488")) +
